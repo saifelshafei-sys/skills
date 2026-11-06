@@ -13,6 +13,6 @@ Install one with `npx skills add saifelshafei-sys/skills --skill <name>`.
 | Plugin | Use |
 |---|---|
 | [`agent-board`](agent-board/README.md) | Live panel showing every agent in a Claude Code session: role, task, current step, files built |
-| [`website-team`](website-team/README.md) | Nine named agents for building a website: designer, frontend and backend developers, QA, security, marketing, copy, SEO, DevOps |
+| [`chief-of-staff`](chief-of-staff/README.md) | Chief of Staff that delegates to nine named agents: designer, frontend and backend developers, QA, security, marketing, copy, SEO, DevOps |
 
 Install with `/plugin install <plugin> --marketplace saifelshafei-sys/skills`.

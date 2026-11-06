@@ -67,7 +67,7 @@ export function label(type: string, clash: Set<string>): string {
   return `${short} · ${type.includes(':') ? type.slice(0, type.lastIndexOf(':')) : 'built-in'}`
 }
 
-/** The name a person reads: `website-team:web-designer` shows as `web-designer`. */
+/** The name a person reads: `chief-of-staff:web-designer` shows as `web-designer`. */
 export function shortName(type: string): string {
   return type.includes(':') ? type.slice(type.lastIndexOf(':') + 1) : type
 }
