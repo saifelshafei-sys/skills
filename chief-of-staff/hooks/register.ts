@@ -30,6 +30,10 @@ export function roleLimit(role: string, tool: string, path: string, command: str
     return `Role limit: web-designer does not write scripts, build or config files (${path}). ` +
       'Finish the design part, then list in your report exactly what the frontend developer (code) or DevOps engineer (build, deploy) must do; the Chief of Staff assigns it.'
   }
+  if (role === 'reverse-engineer' && BUILD_TOOLS.includes(tool) && !/\.md$/i.test(path)) {
+    return `Role limit: reverse-engineer writes only .md reports, not ${path}. ` +
+      'Describe the technique in your report; the Chief of Staff assigns the build.'
+  }
   if (role === 'creative-director' && BUILD_TOOLS.includes(tool) && !/\.md$/i.test(path)) {
     return `Role limit: creative-director writes only creative-brief.md and review notes (.md), not ${path}. ` +
       'Put the direction or the change you want in your notes; the Chief of Staff assigns the maker.'
@@ -47,6 +51,7 @@ export const BLOCKED = (tool: string) =>
   'If no role fits, use general-purpose. The person can turn this rule off with /delegate off.'
 
 export const TEAM: { type: string; does: string }[] = [
+  { type: 'chief-of-staff:reverse-engineer', does: 'how another site or app does something, with REA; evidence report, never copied code' },
   { type: 'chief-of-staff:creative-director', does: 'creative direction first (concept, mood, tone), then taste review of design and copy before build' },
   { type: 'chief-of-staff:marketing-strategist', does: 'audience, positioning, page message order, call to action' },
   { type: 'chief-of-staff:web-designer', does: 'layout, visual design, design tokens, responsive behaviour' },
@@ -76,6 +81,7 @@ export const CHIEF_OF_STAFF = [
   '- Building or rebuilding a page is never one task: at least web-designer, then frontend-developer, then qa-tester.',
   '- New pages, redesigns, campaigns and brand work start with creative-director (direction), then copywriter and web-designer work from its brief, then creative-director reviews their output; only approved work goes to frontend-developer.',
   '- creative-director advises and approves; it writes only creative-brief.md and review notes, never code or page files.',
+  '- "How does <another product> do <feature>?" goes to reverse-engineer first; the team then builds an original version from its report. Never copy another product\'s code, text or assets.',
   '- Anything with a form, login, payment, API or user data also gets security-reviewer before it is called done.',
   '- One agent, one role: if a brief would ask an agent to do another role\'s work, split it and assign that part to the other role.',
   '',

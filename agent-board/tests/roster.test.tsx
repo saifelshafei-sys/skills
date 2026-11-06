@@ -43,6 +43,7 @@ test('the agent types this account has land in sensible departments', () => {
     'impeccable:impeccable-asset-producer': 'Design & UX',
     'understand-anything:tour-builder': 'Docs & writing',
     'chief-of-staff:creative-director': 'Design & UX',
+    'chief-of-staff:reverse-engineer': 'Planning & research',
   }
   for (const [type, dept] of Object.entries(want)) expect(`${type} → ${department(type)}`).toBe(`${type} → ${dept}`)
   expect(department('zeta', 'Reviews pull requests')).toBe('Quality & testing')

@@ -14,6 +14,7 @@ test('the main session gets the Chief of Staff section', async ($, on) => {
   expect(chief?.text.includes('never one task: at least web-designer, then frontend-developer, then qa-tester')).toBe(true)
   expect(chief?.text.includes('It does not write JavaScript, Python')).toBe(true)
   expect(chief?.text.includes('start with creative-director (direction)')).toBe(true)
+  expect(chief?.text.includes('goes to reverse-engineer first')).toBe(true)
   expect(out.sections[0]?.id).toBe('intro')
 })
 
@@ -81,6 +82,9 @@ test('role limits: what each role may and may not do', () => {
   // creative-director: markdown notes only
   expect(roleLimit('creative-director', 'Write', '/site/creative-brief.md', '')).toBeUndefined()
   expect(String(roleLimit('creative-director', 'Edit', '/site/home.css', ''))).toContain('Role limit: creative-director')
+  // reverse-engineer: markdown reports only
+  expect(roleLimit('reverse-engineer', 'Write', '/site/research/scroll.md', '')).toBeUndefined()
+  expect(String(roleLimit('reverse-engineer', 'Write', '/site/scroll.js', ''))).toContain('Role limit: reverse-engineer')
   // other roles may write code
   expect(roleLimit('frontend-developer', 'Write', '/site/contrast.js', '')).toBeUndefined()
   // deploys: only devops-engineer
