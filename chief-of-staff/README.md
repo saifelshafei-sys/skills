@@ -1,7 +1,7 @@
-# website-team
+# chief-of-staff
 
-Nine named agents for building a website. Your main Claude Code session acts as the Chief of Staff
-and assigns work to them; with the `agent-board` plugin each one shows on the board under its
+Makes your main Claude Code session a Chief of Staff that delegates to nine named agents
+(this plugin was called `website-team` before 0.6.0). The Chief of Staff plans and assigns the work; with the `agent-board` plugin each one shows on the board under its
 department, greyed out while idle and as a live card while it works.
 
 | Agent | Department on the board | Does |
@@ -40,11 +40,11 @@ then the security reviewer check it." Edit any file in `agents/` to change a rol
 ## Install
 
 ```
-/plugin install website-team --marketplace saifelshafei-sys/skills
+/plugin install chief-of-staff --marketplace saifelshafei-sys/skills
 ```
 
 From a shell:
 
 ```bash
-claude plugin install website-team --marketplace saifelshafei-sys/skills
+claude plugin install chief-of-staff --marketplace saifelshafei-sys/skills
 ```

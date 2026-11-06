@@ -15,7 +15,7 @@ export const DESIGNER_OFF_LIMITS =
 /** Commands that ship the site; only devops-engineer runs them. */
 export const DEPLOY = /\b(wrangler\s+(deploy|publish|pages\s+deploy)|vercel\s+(deploy|--prod)|netlify\s+deploy|firebase\s+deploy|npm\s+run\s+deploy|pnpm\s+(run\s+)?deploy|yarn\s+deploy)\b/i
 
-/** A role's short name: `website-team:web-designer` is `web-designer`. */
+/** A role's short name: `chief-of-staff:web-designer` is `web-designer`. */
 export function roleName(type: string | undefined): string {
   if (!type) return ''
   return type.includes(':') ? type.slice(type.lastIndexOf(':') + 1) : type
@@ -32,26 +32,26 @@ export function roleLimit(role: string, tool: string, path: string, command: str
   }
   if (tool === 'Bash' && DEPLOY.test(command) && role !== 'devops-engineer') {
     return 'Role limit: only devops-engineer deploys. ' +
-      (role === '' ? 'Assign the deploy to website-team:devops-engineer, after the person confirms it.' : 'Stop and report that the work is ready to deploy; the Chief of Staff assigns DevOps.')
+      (role === '' ? 'Assign the deploy to chief-of-staff:devops-engineer, after the person confirms it.' : 'Stop and report that the work is ready to deploy; the Chief of Staff assigns DevOps.')
   }
   return undefined
 }
 
 export const BLOCKED = (tool: string) =>
   `Chief of Staff rule: you do not ${tool === 'Write' ? 'create' : 'edit'} files yourself. ` +
-  'Delegate this to the matching website-team agent with the Agent tool (a full brief: goal, files, constraints, what to report). ' +
+  'Delegate this to the matching team agent (chief-of-staff:<role>) with the Agent tool (a full brief: goal, files, constraints, what to report). ' +
   'If no role fits, use general-purpose. The person can turn this rule off with /delegate off.'
 
 export const TEAM: { type: string; does: string }[] = [
-  { type: 'website-team:marketing-strategist', does: 'audience, positioning, page message order, call to action' },
-  { type: 'website-team:web-designer', does: 'layout, visual design, design tokens, responsive behaviour' },
-  { type: 'website-team:copywriter', does: 'every word on the site' },
-  { type: 'website-team:frontend-developer', does: 'pages, components, forms, client-side state' },
-  { type: 'website-team:backend-developer', does: 'APIs, database, auth, integrations' },
-  { type: 'website-team:seo-specialist', does: 'keywords, metadata, sitemap, structured data' },
-  { type: 'website-team:qa-tester', does: 'testing, automated tests, bug reports' },
-  { type: 'website-team:security-reviewer', does: 'read-only security review before release' },
-  { type: 'website-team:devops-engineer', does: 'hosting, CI, env vars, release checks' },
+  { type: 'chief-of-staff:marketing-strategist', does: 'audience, positioning, page message order, call to action' },
+  { type: 'chief-of-staff:web-designer', does: 'layout, visual design, design tokens, responsive behaviour' },
+  { type: 'chief-of-staff:copywriter', does: 'every word on the site' },
+  { type: 'chief-of-staff:frontend-developer', does: 'pages, components, forms, client-side state' },
+  { type: 'chief-of-staff:backend-developer', does: 'APIs, database, auth, integrations' },
+  { type: 'chief-of-staff:seo-specialist', does: 'keywords, metadata, sitemap, structured data' },
+  { type: 'chief-of-staff:qa-tester', does: 'testing, automated tests, bug reports' },
+  { type: 'chief-of-staff:security-reviewer', does: 'read-only security review before release' },
+  { type: 'chief-of-staff:devops-engineer', does: 'hosting, CI, env vars, release checks' },
 ]
 
 export const CHIEF_OF_STAFF = [
@@ -152,8 +152,8 @@ export const register: Register = on => {
     }
     return {
       sections: [
-        ...composed.sections.filter(s => s.id !== 'website-team:chief-of-staff'),
-        { id: 'website-team:chief-of-staff', text: CHIEF_OF_STAFF, scope: 'session' as const },
+        ...composed.sections.filter(s => s.id !== 'chief-of-staff:chief-of-staff'),
+        { id: 'chief-of-staff:chief-of-staff', text: CHIEF_OF_STAFF, scope: 'session' as const },
       ],
     }
   })

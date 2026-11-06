@@ -8,9 +8,9 @@ const BASE = { sections: [{ id: 'intro', text: 'engine intro', scope: 'shared' a
 test('the main session gets the Chief of Staff section', async ($, on) => {
   on('prompt.compose', () => BASE)
   const out = await $.prompt.compose(IN(['Agent', 'Read']))
-  const chief = out.sections.find(s => s.id === 'website-team:chief-of-staff')
+  const chief = out.sections.find(s => s.id === 'chief-of-staff:chief-of-staff')
   expect(chief?.scope).toBe('session')
-  expect(chief?.text.includes('website-team:web-designer')).toBe(true)
+  expect(chief?.text.includes('chief-of-staff:web-designer')).toBe(true)
   expect(chief?.text.includes('never one task: at least web-designer, then frontend-developer, then qa-tester')).toBe(true)
   expect(chief?.text.includes('It does not write JavaScript, Python')).toBe(true)
   expect(out.sections[0]?.id).toBe('intro')
@@ -19,7 +19,7 @@ test('the main session gets the Chief of Staff section', async ($, on) => {
 test('an agent without the Agent tool is not told to delegate', async ($, on) => {
   on('prompt.compose', () => BASE)
   const out = await $.prompt.compose(IN(['Read', 'Edit']))
-  expect(out.sections.some(s => s.id === 'website-team:chief-of-staff')).toBe(false)
+  expect(out.sections.some(s => s.id === 'chief-of-staff:chief-of-staff')).toBe(false)
 })
 
 test('/delegate off turns it off', async ($, on) => {
@@ -32,11 +32,11 @@ test('/delegate off turns it off', async ($, on) => {
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
 
   const before = await $.prompt.compose(IN(['Agent']))
-  expect(before.sections.some(s => s.id === 'website-team:chief-of-staff')).toBe(true)
+  expect(before.sections.some(s => s.id === 'chief-of-staff:chief-of-staff')).toBe(true)
   const said = await $.command.run({ command: 'delegate', args: 'off' } as never)
   expect(JSON.stringify(said).includes('is off')).toBe(true)
   const out = await $.prompt.compose(IN(['Agent']))
-  expect(out.sections.some(s => s.id === 'website-team:chief-of-staff')).toBe(false)
+  expect(out.sections.some(s => s.id === 'chief-of-staff:chief-of-staff')).toBe(false)
 })
 
 test('the Chief of Staff cannot edit files; an agent can', async ($, on) => {
@@ -52,7 +52,7 @@ test('the Chief of Staff cannot edit files; an agent can', async ($, on) => {
 test('older Claude Code (Task tool) also gets the section', async ($, on) => {
   on('prompt.compose', () => BASE)
   const out = await $.prompt.compose(IN(['Task', 'Read']))
-  expect(out.sections.some(s => s.id === 'website-team:chief-of-staff')).toBe(true)
+  expect(out.sections.some(s => s.id === 'chief-of-staff:chief-of-staff')).toBe(true)
 })
 
 test('/delegate off lets the Chief of Staff edit again', async ($, on) => {
@@ -91,8 +91,8 @@ test('role limits: what each role may and may not do', () => {
 
 test('a web-designer agent is refused a .js file; a frontend-developer is not', async ($, on) => {
   on('agent.list', () => ({ value: [
-    { id: 'd1', type: 'website-team:web-designer', description: '', status: 'running' },
-    { id: 'f1', type: 'website-team:frontend-developer', description: '', status: 'running' },
+    { id: 'd1', type: 'chief-of-staff:web-designer', description: '', status: 'running' },
+    { id: 'f1', type: 'chief-of-staff:frontend-developer', description: '', status: 'running' },
   ] }))
   on('tool.call', () => ({ result: {} }))
   const designer = await $.tool.call({ tool: 'Write', file_path: '/site/contrast.js', content: 'x', agentId: 'd1' } as never)
