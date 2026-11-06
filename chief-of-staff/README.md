@@ -68,3 +68,16 @@ claude plugin install rea@rea
 ```
 
 Without REA the agent still works from the public page alone and says so.
+
+## Scrapling for web research
+
+`seo-specialist`, `marketing-strategist` and `reverse-engineer` can use
+[Scrapling](https://github.com/D4Vinci/Scrapling)'s MCP tools to capture pages and crawl sites. Its
+CAPTCHA and Cloudflare solving is refused by a hook for every agent, whatever `/delegate` says.
+Install once per machine (needs Python):
+
+```bash
+py -m pip install "scrapling[ai]"
+scrapling install
+claude mcp add --scope user scrapling -- scrapling-mcp
+```
