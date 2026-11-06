@@ -127,6 +127,16 @@ export function describe(e: unknown): string {
   }
 }
 
+/**
+ * The Chief of Staff's line: what it is doing while its turn runs; once the
+ * turn is over, who it is waiting on, the team before the person.
+ */
+export function chiefNow(isWorking: boolean, activity: string, working: number): string {
+  if (isWorking) return activity
+  if (working > 0) return `Waiting on ${working} agent${working === 1 ? '' : 's'}`
+  return 'Waiting for you'
+}
+
 /** Update the board without ever blocking the agent's real work if it fails. */
 async function mark($: EngineInterface, fn: (b: Board) => Board): Promise<void> {
   try {
@@ -317,13 +327,13 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column">
         <Box flexDirection="row" gap={1}>
-          <Text color={b.chief.isWorking ? 'warning' : 'success'}>{b.chief.isWorking ? '●' : '○'}</Text>
+          <Text color={b.chief.isWorking || working > 0 ? 'warning' : 'success'}>{b.chief.isWorking ? '●' : working > 0 ? '◐' : '○'}</Text>
           <Text bold>Chief of Staff</Text>
           <Text dimColor>main session</Text>
         </Box>
         <Box flexDirection="column" marginLeft={2}>
           <Text color={b.chief.isWorking ? 'claude' : undefined} dimColor={!b.chief.isWorking} wrap="truncate">
-            Now: {cut(b.chief.activity, cols - 7)}
+            Now: {cut(chiefNow(b.chief.isWorking, b.chief.activity, working), cols - 7)}
           </Text>
           {b.chief.built.length > 0 && <Text dimColor wrap="truncate">Built: {b.chief.built.join(', ')}</Text>}
           <Text dimColor>Team: {teamSize} agents · {working} working · {done} done</Text>
