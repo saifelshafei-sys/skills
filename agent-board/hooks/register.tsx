@@ -46,6 +46,7 @@ export const OVERRIDES: Record<string, string> = {
   'impeccable-asset-producer': 'Design & UX',
   'tour-builder': 'Docs & writing',
   'creative-director': 'Design & UX',
+  'reverse-engineer': 'Planning & research',
 }
 
 /**
