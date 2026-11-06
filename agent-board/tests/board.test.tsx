@@ -34,6 +34,7 @@ test('a spawned agent shows its role, task, current step and what it built', asy
     expect((await ui.find({ type: 'Text', text: /^Task:/ }))?.text).toBe('Task: Design the homepage')
     expect((await ui.find({ type: 'Text', text: /^Now: Running/ }))?.text).toBe('Now: Running: Build the site')
     expect((await ui.find({ type: 'Text', text: /^Built:/ }))?.text).toBe('Built: hero.tsx')
+    expect((await ui.find({ type: 'Text', text: /^Now: Waiting/ }))?.text).toBe('Now: Waiting on 1 agent')
     await ui.unmount()
   }
 })

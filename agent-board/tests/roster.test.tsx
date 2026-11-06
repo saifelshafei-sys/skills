@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { clashes, department, label } from '../hooks/register'
+import { chiefNow, clashes, department, label } from '../hooks/register'
 
 const PANE = {
   plugin: 'agent-board',
@@ -82,4 +82,11 @@ test('two agents with one short name show where each comes from', () => {
   expect(label('Explore', clash)).toBe('Explore · built-in')
   expect(label('claude-security:explore', clash)).toBe('explore · claude-security')
   expect(label('agent-protocols:code-reviewer', clash)).toBe('code-reviewer')
+})
+
+test('the Chief of Staff line says who it waits on', () => {
+  expect(chiefNow(true, 'Assigning: Build the page', 2)).toBe('Assigning: Build the page')
+  expect(chiefNow(false, 'Waiting for you', 1)).toBe('Waiting on 1 agent')
+  expect(chiefNow(false, 'Waiting for you', 3)).toBe('Waiting on 3 agents')
+  expect(chiefNow(false, 'Waiting for you', 0)).toBe('Waiting for you')
 })
