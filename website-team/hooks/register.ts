@@ -8,6 +8,35 @@ export const BUILD_TOOLS = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit']
 /** The tool that starts an agent: `Agent` now, `Task` in older Claude Code. */
 const SPAWN_TOOLS = ['Agent', 'Task']
 
+/** Files a web-designer may not write: scripts, build and deploy config. */
+export const DESIGNER_OFF_LIMITS =
+  /(\.(m?js|cjs|ts|mts|cts|py|sh|bash|ps1|bat|rb|go|rs|php|toml)$)|((^|[\\/])(package(-lock)?\.json|wrangler\.[a-z]+|Dockerfile|docker-compose\.ya?ml|vercel\.json|netlify\.toml)$)|((^|[\\/])\.github[\\/])/i
+
+/** Commands that ship the site; only devops-engineer runs them. */
+export const DEPLOY = /\b(wrangler\s+(deploy|publish|pages\s+deploy)|vercel\s+(deploy|--prod)|netlify\s+deploy|firebase\s+deploy|npm\s+run\s+deploy|pnpm\s+(run\s+)?deploy|yarn\s+deploy)\b/i
+
+/** A role's short name: `website-team:web-designer` is `web-designer`. */
+export function roleName(type: string | undefined): string {
+  if (!type) return ''
+  return type.includes(':') ? type.slice(type.lastIndexOf(':') + 1) : type
+}
+
+/**
+ * Why a call breaks a role's limit, or undefined when it may run. `role` is
+ * the calling agent's short type, '' for the Chief of Staff.
+ */
+export function roleLimit(role: string, tool: string, path: string, command: string): string | undefined {
+  if (role === 'web-designer' && BUILD_TOOLS.includes(tool) && DESIGNER_OFF_LIMITS.test(path)) {
+    return `Role limit: web-designer does not write scripts, build or config files (${path}). ` +
+      'Finish the design part, then list in your report exactly what the frontend developer (code) or DevOps engineer (build, deploy) must do; the Chief of Staff assigns it.'
+  }
+  if (tool === 'Bash' && DEPLOY.test(command) && role !== 'devops-engineer') {
+    return 'Role limit: only devops-engineer deploys. ' +
+      (role === '' ? 'Assign the deploy to website-team:devops-engineer, after the person confirms it.' : 'Stop and report that the work is ready to deploy; the Chief of Staff assigns DevOps.')
+  }
+  return undefined
+}
+
 export const BLOCKED = (tool: string) =>
   `Chief of Staff rule: you do not ${tool === 'Write' ? 'create' : 'edit'} files yourself. ` +
   'Delegate this to the matching website-team agent with the Agent tool (a full brief: goal, files, constraints, what to report). ' +
@@ -36,7 +65,8 @@ export const CHIEF_OF_STAFF = [
   'Routing rules (follow them even when one agent could do it all):',
   '- web-designer produces the design only: layout, styles, design tokens, visual specs. It does not write JavaScript, Python, build scripts or deploy steps.',
   '- frontend-developer writes pages, components and any client-side JavaScript or TypeScript; backend-developer writes servers, APIs, data and server-side scripts.',
-  '- devops-engineer owns build, hosting, CI and deploy steps (wrangler, Docker, pipelines).',
+  '- devops-engineer owns build, hosting, CI and deploy steps (wrangler, Docker, pipelines). Deploy commands are blocked for everyone else, you included.',
+  '- web-designer is blocked from writing scripts, build and config files (.js, .ts, .py, wrangler, package.json); route that work to the developers or DevOps from the start.',
   '- copywriter writes the words; marketing-strategist decides the message first when the page is new or repositioned; seo-specialist sets titles, metadata and structure.',
   '- Building or rebuilding a page is never one task: at least web-designer, then frontend-developer, then qa-tester.',
   '- Anything with a form, login, payment, API or user data also gets security-reviewer before it is called done.',
@@ -73,16 +103,32 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // The hard rule: the main session (no agentId) may not change files.
+  // The hard rules: the main session (no agentId) may not change files, and
+  // each role keeps to its own work (roleLimit).
   on('tool.call', async ($, e, next) => {
-    if (e.agentId !== undefined || !BUILD_TOOLS.includes(e.tool)) return next(e)
+    const isFileTool = BUILD_TOOLS.includes(e.tool)
+    if (!isFileTool && e.tool !== 'Bash') return next(e)
     let isActive = true
     try {
       isActive = await isOn(k => $.store.get(k))
     } catch {
       // Store unreadable: keep the default, on.
     }
-    return isActive ? { deny: BLOCKED(e.tool) } : next(e)
+    if (!isActive) return next(e)
+    if (e.agentId === undefined && isFileTool) return { deny: BLOCKED(e.tool) }
+
+    const fields = e as unknown as Record<string, unknown>
+    const text = (k: string) => (typeof fields[k] === 'string' ? (fields[k] as string) : '')
+    let role = ''
+    if (e.agentId !== undefined) {
+      try {
+        role = roleName((await $.agent.list()).find(a => a.id === e.agentId)?.type)
+      } catch {
+        return next(e) // Cannot tell the role: do not block real work on a guess.
+      }
+    }
+    const why = roleLimit(role, e.tool, text('file_path') || text('notebook_path'), text('command'))
+    return why ? { deny: why } : next(e)
   })
 
   on('command.run', { command: 'delegate' }, async ($, e) => {
