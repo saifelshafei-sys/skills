@@ -45,6 +45,7 @@ export const OVERRIDES: Record<string, string> = {
   'project-scanner': 'Planning & research',
   'impeccable-asset-producer': 'Design & UX',
   'tour-builder': 'Docs & writing',
+  'creative-director': 'Design & UX',
 }
 
 /**

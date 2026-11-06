@@ -1,1 +1,1 @@
-{ "name": "agent-board", "version": "0.2.4", "description": "Live org chart of the session's agents: who each one is, its task, what it is doing and what it has built", "types": "./types/index.d.ts" }
+{ "name": "agent-board", "version": "0.2.5", "description": "Live org chart of the session's agents: who each one is, its task, what it is doing and what it has built", "types": "./types/index.d.ts" }

@@ -13,6 +13,7 @@ test('the main session gets the Chief of Staff section', async ($, on) => {
   expect(chief?.text.includes('chief-of-staff:web-designer')).toBe(true)
   expect(chief?.text.includes('never one task: at least web-designer, then frontend-developer, then qa-tester')).toBe(true)
   expect(chief?.text.includes('It does not write JavaScript, Python')).toBe(true)
+  expect(chief?.text.includes('start with creative-director (direction)')).toBe(true)
   expect(out.sections[0]?.id).toBe('intro')
 })
 
@@ -77,6 +78,9 @@ test('role limits: what each role may and may not do', () => {
   for (const no of ['/site/contrast.js', '/site/static.ts', 'C:\\\\site\\\\finish.py', '/site/wrangler.toml', '/site/package.json', '/site/.github/workflows/ci.yml', '/site/build.sh']) {
     expect(String(roleLimit('web-designer', 'Edit', no, '')).startsWith('Role limit: web-designer')).toBe(true)
   }
+  // creative-director: markdown notes only
+  expect(roleLimit('creative-director', 'Write', '/site/creative-brief.md', '')).toBeUndefined()
+  expect(String(roleLimit('creative-director', 'Edit', '/site/home.css', ''))).toContain('Role limit: creative-director')
   // other roles may write code
   expect(roleLimit('frontend-developer', 'Write', '/site/contrast.js', '')).toBeUndefined()
   // deploys: only devops-engineer

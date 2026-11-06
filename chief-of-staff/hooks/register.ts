@@ -30,6 +30,10 @@ export function roleLimit(role: string, tool: string, path: string, command: str
     return `Role limit: web-designer does not write scripts, build or config files (${path}). ` +
       'Finish the design part, then list in your report exactly what the frontend developer (code) or DevOps engineer (build, deploy) must do; the Chief of Staff assigns it.'
   }
+  if (role === 'creative-director' && BUILD_TOOLS.includes(tool) && !/\.md$/i.test(path)) {
+    return `Role limit: creative-director writes only creative-brief.md and review notes (.md), not ${path}. ` +
+      'Put the direction or the change you want in your notes; the Chief of Staff assigns the maker.'
+  }
   if (tool === 'Bash' && DEPLOY.test(command) && role !== 'devops-engineer') {
     return 'Role limit: only devops-engineer deploys. ' +
       (role === '' ? 'Assign the deploy to chief-of-staff:devops-engineer, after the person confirms it.' : 'Stop and report that the work is ready to deploy; the Chief of Staff assigns DevOps.')
@@ -43,6 +47,7 @@ export const BLOCKED = (tool: string) =>
   'If no role fits, use general-purpose. The person can turn this rule off with /delegate off.'
 
 export const TEAM: { type: string; does: string }[] = [
+  { type: 'chief-of-staff:creative-director', does: 'creative direction first (concept, mood, tone), then taste review of design and copy before build' },
   { type: 'chief-of-staff:marketing-strategist', does: 'audience, positioning, page message order, call to action' },
   { type: 'chief-of-staff:web-designer', does: 'layout, visual design, design tokens, responsive behaviour' },
   { type: 'chief-of-staff:copywriter', does: 'every word on the site' },
@@ -69,6 +74,8 @@ export const CHIEF_OF_STAFF = [
   '- web-designer is blocked from writing scripts, build and config files (.js, .ts, .py, wrangler, package.json); route that work to the developers or DevOps from the start.',
   '- copywriter writes the words; marketing-strategist decides the message first when the page is new or repositioned; seo-specialist sets titles, metadata and structure.',
   '- Building or rebuilding a page is never one task: at least web-designer, then frontend-developer, then qa-tester.',
+  '- New pages, redesigns, campaigns and brand work start with creative-director (direction), then copywriter and web-designer work from its brief, then creative-director reviews their output; only approved work goes to frontend-developer.',
+  '- creative-director advises and approves; it writes only creative-brief.md and review notes, never code or page files.',
   '- Anything with a form, login, payment, API or user data also gets security-reviewer before it is called done.',
   '- One agent, one role: if a brief would ask an agent to do another role\'s work, split it and assign that part to the other role.',
   '',
