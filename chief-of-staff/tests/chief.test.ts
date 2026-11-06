@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { roleLimit } from '../hooks/register'
+import { bypassLimit, roleLimit } from '../hooks/register'
 
 const IN = (tools: string[]) => ({ model: 'm', promptModel: 'm', surfaces: [], tools, outputStyle: null, traits: [] })
 const BASE = { sections: [{ id: 'intro', text: 'engine intro', scope: 'shared' as const }] }
@@ -112,4 +112,22 @@ test('a web-designer agent is refused a .js file; a frontend-developer is not', 
   expect((dev as { deny?: string }).deny).toBeUndefined()
   const deploy = await $.tool.call({ tool: 'Bash', command: 'npx wrangler deploy', agentId: 'f1' } as never)
   expect(String((deploy as { deny?: string }).deny)).toContain('only devops-engineer deploys')
+})
+
+test('getting past bot protection is refused for everyone; normal scraping is not', async ($, on) => {
+  expect(bypassLimit('mcp__scrapling__browser_fetch', { url: 'https://x.com', solve_cloudflare: true })).toContain('Not allowed')
+  expect(bypassLimit('mcp__scrapling__browser_fetch', { url: 'https://x.com', solve_cloudflare: false })).toBeUndefined()
+  expect(bypassLimit('mcp__scrapling__make_request', { url: 'https://x.com' })).toBeUndefined()
+  expect(bypassLimit('Bash', { command: 'scrapling extract stealthy-fetch https://x.com out.md --solve-cloudflare' })).toContain('Not allowed')
+  expect(bypassLimit('Bash', { command: 'python -c "StealthyFetcher.fetch(u, solve_cloudflare=True)"' })).toContain('Not allowed')
+  expect(bypassLimit('Bash', { command: 'scrapling extract get https://x.com out.md' })).toBeUndefined()
+
+  // the hook refuses it even with /delegate off, and for an agent
+  const kept = new Map<string, unknown>([['delegate', false]])
+  on('store.get', (_, e) => ({ value: kept.get(e.key) }))
+  on('tool.call', () => ({ result: {} }))
+  const r = await $.tool.call({ tool: 'mcp__scrapling__browser_fetch_once', url: 'https://x.com', solve_cloudflare: true, agentId: 'a1' } as never)
+  expect(String((r as { deny?: string }).deny)).toContain('Not allowed')
+  const ok = await $.tool.call({ tool: 'mcp__scrapling__make_request', url: 'https://x.com', agentId: 'a1' } as never)
+  expect((ok as { deny?: string }).deny).toBeUndefined()
 })

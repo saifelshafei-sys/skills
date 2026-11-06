@@ -15,6 +15,19 @@ export const DESIGNER_OFF_LIMITS =
 /** Commands that ship the site; only devops-engineer runs them. */
 export const DEPLOY = /\b(wrangler\s+(deploy|publish|pages\s+deploy)|vercel\s+(deploy|--prod)|netlify\s+deploy|firebase\s+deploy|npm\s+run\s+deploy|pnpm\s+(run\s+)?deploy|yarn\s+deploy)\b/i
 
+/** Scrapling (or any) settings that get past bot protection: always refused. */
+export const BYPASS_ARGS = /^(solve_cloudflare|solve_captcha|captcha.*|bypass.*)$/i
+export const BYPASS_SHELL = /(--solve-cloudflare\b|solve_cloudflare\s*=\s*True|solve_cloudflare["']?\s*:\s*true)/i
+
+/** Why a call tries to get past a site's bot protection, or undefined. */
+export function bypassLimit(tool: string, fields: Record<string, unknown>): string | undefined {
+  const why = 'Not allowed: this team does not get past CAPTCHAs, Cloudflare challenges or other bot protection. ' +
+    'If a site blocks normal access, report it as blocked and move on (or use its public pages, an official API, or ask the person).'
+  if (tool.startsWith('mcp__') && Object.entries(fields).some(([k, v]) => BYPASS_ARGS.test(k) && v === true)) return why
+  if (tool === 'Bash' && typeof fields.command === 'string' && BYPASS_SHELL.test(fields.command)) return why
+  return undefined
+}
+
 /** A role's short name: `chief-of-staff:web-designer` is `web-designer`. */
 export function roleName(type: string | undefined): string {
   if (!type) return ''
@@ -81,6 +94,7 @@ export const CHIEF_OF_STAFF = [
   '- Building or rebuilding a page is never one task: at least web-designer, then frontend-developer, then qa-tester.',
   '- New pages, redesigns, campaigns and brand work start with creative-director (direction), then copywriter and web-designer work from its brief, then creative-director reviews their output; only approved work goes to frontend-developer.',
   '- creative-director advises and approves; it writes only creative-brief.md and review notes, never code or page files.',
+  '- Web research (crawling a site, capturing pages as Markdown, SEO audits) goes to seo-specialist, marketing-strategist or reverse-engineer; they may use the Scrapling MCP tools if installed. Getting past CAPTCHAs or Cloudflare is blocked for everyone.',
   '- "How does <another product> do <feature>?" goes to reverse-engineer first; the team then builds an original version from its report. Never copy another product\'s code, text or assets.',
   '- Anything with a form, login, payment, API or user data also gets security-reviewer before it is called done.',
   '- One agent, one role: if a brief would ask an agent to do another role\'s work, split it and assign that part to the other role.',
@@ -124,6 +138,9 @@ export const register: Register = on => {
   // each role keeps to its own work (roleLimit).
   on('tool.call', async ($, e, next) => {
     const isFileTool = BUILD_TOOLS.includes(e.tool)
+    // Bot-protection bypass is refused for everyone, even with /delegate off.
+    const bypass = bypassLimit(e.tool, e as unknown as Record<string, unknown>)
+    if (bypass) return { deny: bypass }
     if (!isFileTool && e.tool !== 'Bash') return next(e)
     let isActive = true
     try {
