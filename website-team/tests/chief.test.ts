@@ -9,6 +9,8 @@ test('the main session gets the Chief of Staff section', async ($, on) => {
   const chief = out.sections.find(s => s.id === 'website-team:chief-of-staff')
   expect(chief?.scope).toBe('session')
   expect(chief?.text.includes('website-team:web-designer')).toBe(true)
+  expect(chief?.text.includes('never one task: at least web-designer, then frontend-developer, then qa-tester')).toBe(true)
+  expect(chief?.text.includes('It does not write JavaScript, Python')).toBe(true)
   expect(out.sections[0]?.id).toBe('intro')
 })
 
