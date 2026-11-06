@@ -51,6 +51,12 @@ From a shell:
 claude plugin install chief-of-staff --marketplace saifelshafei-sys/skills
 ```
 
+## Superpowers
+
+If [Superpowers](https://github.com/obra/superpowers) is installed, the Chief of Staff uses its planning
+skills (brainstorming, writing-plans) to split big jobs, and never its execution skills to do the
+work itself: each step still goes to a role.
+
 ## REA for the reverse engineer
 
 `reverse-engineer` uses REA's `reverse-engineer-anything` skill and MCP tools. Install REA once per

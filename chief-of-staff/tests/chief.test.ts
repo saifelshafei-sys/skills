@@ -15,6 +15,7 @@ test('the main session gets the Chief of Staff section', async ($, on) => {
   expect(chief?.text.includes('It does not write JavaScript, Python')).toBe(true)
   expect(chief?.text.includes('start with creative-director (direction)')).toBe(true)
   expect(chief?.text.includes('goes to reverse-engineer first')).toBe(true)
+  expect(chief?.text.includes('Use Superpowers to plan, never to implement yourself')).toBe(true)
   expect(out.sections[0]?.id).toBe('intro')
 })
 
