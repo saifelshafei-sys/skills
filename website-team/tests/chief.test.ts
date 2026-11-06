@@ -1,5 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
+import { roleLimit } from '../hooks/register'
+
 const IN = (tools: string[]) => ({ model: 'm', promptModel: 'm', surfaces: [], tools, outputStyle: null, traits: [] })
 const BASE = { sections: [{ id: 'intro', text: 'engine intro', scope: 'shared' as const }] }
 
@@ -64,4 +66,41 @@ test('/delegate off lets the Chief of Staff edit again', async ($, on) => {
   await $.command.run({ command: 'delegate', args: 'off' } as never)
   const chief = await $.tool.call({ tool: 'Write', file_path: '/a.ts', content: 'x' } as never)
   expect((chief as { deny?: string }).deny).toBeUndefined()
+})
+
+
+test('role limits: what each role may and may not do', () => {
+  // web-designer: styles, markup and components yes; scripts and config no
+  for (const ok of ['/site/home.css', '/site/index.html', '/site/Hero.tsx', '/site/Nav.vue', '/site/logo.svg', '/site/tokens.json']) {
+    expect(`${ok} ${roleLimit('web-designer', 'Write', ok, '') ?? 'allowed'}`).toBe(`${ok} allowed`)
+  }
+  for (const no of ['/site/contrast.js', '/site/static.ts', 'C:\\\\site\\\\finish.py', '/site/wrangler.toml', '/site/package.json', '/site/.github/workflows/ci.yml', '/site/build.sh']) {
+    expect(String(roleLimit('web-designer', 'Edit', no, '')).startsWith('Role limit: web-designer')).toBe(true)
+  }
+  // other roles may write code
+  expect(roleLimit('frontend-developer', 'Write', '/site/contrast.js', '')).toBeUndefined()
+  // deploys: only devops-engineer
+  expect(roleLimit('devops-engineer', 'Bash', '', 'npx wrangler deploy')).toBeUndefined()
+  expect(String(roleLimit('frontend-developer', 'Bash', '', 'npx wrangler deploy'))).toContain('only devops-engineer deploys')
+  expect(String(roleLimit('', 'Bash', '', 'vercel --prod'))).toContain('Assign the deploy')
+  // ordinary commands, including a local dev server, stay allowed
+  for (const cmd of ['npm run build', 'npx wrangler dev', 'npm test', 'git status']) {
+    expect(`${cmd} ${roleLimit('web-designer', 'Bash', '', cmd) ?? 'allowed'}`).toBe(`${cmd} allowed`)
+  }
+})
+
+test('a web-designer agent is refused a .js file; a frontend-developer is not', async ($, on) => {
+  on('agent.list', () => ({ value: [
+    { id: 'd1', type: 'website-team:web-designer', description: '', status: 'running' },
+    { id: 'f1', type: 'website-team:frontend-developer', description: '', status: 'running' },
+  ] }))
+  on('tool.call', () => ({ result: {} }))
+  const designer = await $.tool.call({ tool: 'Write', file_path: '/site/contrast.js', content: 'x', agentId: 'd1' } as never)
+  expect(String((designer as { deny?: string }).deny)).toContain('Role limit: web-designer')
+  const css = await $.tool.call({ tool: 'Write', file_path: '/site/home.css', content: 'x', agentId: 'd1' } as never)
+  expect((css as { deny?: string }).deny).toBeUndefined()
+  const dev = await $.tool.call({ tool: 'Write', file_path: '/site/contrast.js', content: 'x', agentId: 'f1' } as never)
+  expect((dev as { deny?: string }).deny).toBeUndefined()
+  const deploy = await $.tool.call({ tool: 'Bash', command: 'npx wrangler deploy', agentId: 'f1' } as never)
+  expect(String((deploy as { deny?: string }).deny)).toContain('only devops-engineer deploys')
 })

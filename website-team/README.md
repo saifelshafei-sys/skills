@@ -22,6 +22,10 @@ Your main session is the Chief of Staff. Two things make it delegate:
 
 - **A hard rule.** The main session cannot use Edit, Write, MultiEdit or NotebookEdit: those calls are
   refused with a note to hand the work to an agent. Agents can still change files.
+- **Role limits.** `web-designer` cannot write scripts, build or config files (`.js`, `.ts`, `.py`,
+  `.sh`, `wrangler.*`, `package.json`, CI files); styles, HTML and component markup are fine. Only
+  `devops-engineer` can run deploy commands (`wrangler deploy`, `vercel --prod`, ...), the Chief of
+  Staff included. A blocked agent is told who the work belongs to.
 - **Instructions.** A "Chief of Staff" section in the main session's instructions lists the nine roles
   and how to run the work: split it, brief each agent fully, run independent tasks in parallel, check
   reports, sum up. Agents never get this section.
