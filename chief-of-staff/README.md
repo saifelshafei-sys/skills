@@ -69,6 +69,10 @@ claude plugin install rea@rea
 
 Without REA the agent still works from the public page alone and says so.
 
+## taste-skill for the web designer
+
+`web-designer` preloads taste-skill's `design-taste-frontend` skill when that plugin is installed; `creative-director` and `copywriter` don't, because they have no Bash and the skill needs it to run its scripts.
+
 ## Scrapling for web research
 
 `seo-specialist`, `marketing-strategist` and `reverse-engineer` can use
