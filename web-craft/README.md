@@ -20,8 +20,18 @@ that work to `web-designer` (build) or `qa-tester` (score).
 
 ## Install
 
+Inside a Claude Code session:
+
 ```
-/plugin install web-craft --marketplace saifelshafei-sys/skills
+/plugin marketplace add saifelshafei-sys/skills
+/plugin install web-craft@saifelshafei-skills
+```
+
+From a shell:
+
+```bash
+claude plugin marketplace add saifelshafei-sys/skills
+claude plugin install web-craft@saifelshafei-skills
 ```
 
 ## Credits

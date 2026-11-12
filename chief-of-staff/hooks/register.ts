@@ -15,6 +15,39 @@ export const DESIGNER_OFF_LIMITS =
 /** Commands that ship the site; only devops-engineer runs them. */
 export const DEPLOY = /\b(wrangler\s+(deploy|publish|pages\s+deploy)|vercel\s+(deploy|--prod)|netlify\s+deploy|firebase\s+deploy|npm\s+run\s+deploy|pnpm\s+(run\s+)?deploy|yarn\s+deploy)\b/i
 
+/** Where a command starts: line start, `;`, `&`, `|`, newline, `(`, `$(`, a backtick or `{`. */
+const COMMAND_START = String.raw`(?:^|[;&|\n(\x60{])\s*`
+/** What may come before the command: shell keywords, `FOO=1` env assignments, runners such as npx. */
+const COMMAND_PREFIX = String.raw`(?:(?:then|do|else|elif|if|while|until|!)\s+)*(?:[A-Za-z_]\w*=\S*\s+)*` +
+  String.raw`(?:(?:npx|bunx|pnpm\s+(?:dlx|exec)|yarn\s+dlx|sudo|env|command|exec|nohup|time|xargs)\s+(?:-\S+\s+)*(?:[A-Za-z_]\w*=\S*\s+)*)*(?:\S*\/)?`
+const DEPLOY_AT_START = new RegExp(COMMAND_START + COMMAND_PREFIX + DEPLOY.source.slice(2), 'i')
+
+/** A shell that runs a heredoc body or a quoted string as commands: keep that text. */
+const RUNS_HEREDOC = /\b(ba|z|da|k)?sh\s*$/
+const RUNS_QUOTED = /(\b(ba|z|da|k)?sh\s+(-\w+\s+)*-\w*c\s*|\beval\s+)$/
+
+/**
+ * Whether a shell command actually runs a deploy, not merely mentions one.
+ * Heredoc bodies and quoted strings are dropped first (unless a shell runs
+ * them: `bash -c "..."`, `eval '...'`, `bash <<EOF`, or `"$(...)"`), then the
+ * deploy pattern must sit at a command position. When unsure, it says yes.
+ */
+export function runsDeploy(command: string): boolean {
+  const noHeredocs = command.replace(
+    /(?<!<)<<(-?)[ \t]*(['"]?)([A-Za-z_][\w.-]*)\2([^\n]*)(?:\n[\s\S]*?(?:\n[ \t]*\3[ \t]*(?=\n|$)|$)|$)/g,
+    (all, _dash, _q, _tag, rest, offset: number, whole: string) => {
+      const before = whole.slice(whole.lastIndexOf('\n', offset - 1) + 1, offset)
+      return RUNS_HEREDOC.test(before) ? all : `<<HEREDOC${rest}`
+    })
+  const noQuotes = noHeredocs.replace(/'[^']*'|"(?:[^"\\]|\\[\s\S])*"/g, (quoted, offset: number, whole: string) => {
+    const inner = quoted.slice(1, -1)
+    if (RUNS_QUOTED.test(whole.slice(0, offset))) return `(${inner})`
+    if (quoted[0] === '"' && /\$\(|\x60/.test(inner)) return `(${inner})`
+    return quoted[0] + quoted[0]
+  })
+  return DEPLOY_AT_START.test(noQuotes)
+}
+
 /** Scrapling (or any) settings that get past bot protection: always refused. */
 export const BYPASS_ARGS = /^(solve_cloudflare|solve_captcha|captcha.*|bypass.*)$/i
 export const BYPASS_SHELL = /(--solve-cloudflare\b|solve_cloudflare\s*=\s*True|solve_cloudflare["']?\s*:\s*true)/i
@@ -51,7 +84,7 @@ export function roleLimit(role: string, tool: string, path: string, command: str
     return `Role limit: creative-director writes only creative-brief.md and review notes (.md), not ${path}. ` +
       'Put the direction or the change you want in your notes; the Chief of Staff assigns the maker.'
   }
-  if (tool === 'Bash' && DEPLOY.test(command) && role !== 'devops-engineer') {
+  if (tool === 'Bash' && runsDeploy(command) && role !== 'devops-engineer') {
     return 'Role limit: only devops-engineer deploys. ' +
       (role === '' ? 'Assign the deploy to chief-of-staff:devops-engineer, after the person confirms it.' : 'Stop and report that the work is ready to deploy; the Chief of Staff assigns DevOps.')
   }

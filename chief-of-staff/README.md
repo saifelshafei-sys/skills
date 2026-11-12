@@ -41,14 +41,24 @@ then the security reviewer check it." Edit any file in `agents/` to change a rol
 
 ## Install
 
+Inside a Claude Code session:
+
 ```
-/plugin install chief-of-staff --marketplace saifelshafei-sys/skills
+/plugin marketplace add saifelshafei-sys/skills
+/plugin install chief-of-staff@saifelshafei-skills
 ```
 
 From a shell:
 
 ```bash
-claude plugin install chief-of-staff --marketplace saifelshafei-sys/skills
+claude plugin marketplace add saifelshafei-sys/skills
+claude plugin install chief-of-staff@saifelshafei-skills
+```
+
+For the live agent board too:
+
+```bash
+claude plugin install agent-board@saifelshafei-skills
 ```
 
 ## Superpowers
