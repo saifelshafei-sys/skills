@@ -13,7 +13,7 @@ Install one with `npx skills add saifelshafei-sys/skills --skill <name>`.
 | Plugin | Use |
 |---|---|
 | [`agent-board`](agent-board/README.md) | Live panel showing every agent in a Claude Code session: role, task, current step, files built |
-| [`chief-of-staff`](chief-of-staff/README.md) | Chief of Staff that delegates to eleven named agents: reverse engineer, creative director, designer, frontend and backend developers, QA, security, marketing, copy, SEO, DevOps |
+| [`chief-of-staff`](chief-of-staff/README.md) | Chief of Staff that delegates to twelve named agents: reverse engineer, creative director, designer, frontend and backend developers, QA, security reviewer and engineer, marketing, copy, SEO, DevOps |
 | [`web-craft`](web-craft/README.md) | Award-level website skills: `/awwwards` builds a site, `/jury` scores one, `/teardown` makes interactive 3D explainers of real machines |
 
 Install in two steps, from a shell:

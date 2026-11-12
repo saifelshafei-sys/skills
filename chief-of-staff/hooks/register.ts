@@ -20,32 +20,49 @@ const COMMAND_START = String.raw`(?:^|[;&|\n(\x60{])\s*`
 /** What may come before the command: shell keywords, `FOO=1` env assignments, runners such as npx. */
 const COMMAND_PREFIX = String.raw`(?:(?:then|do|else|elif|if|while|until|!)\s+)*(?:[A-Za-z_]\w*=\S*\s+)*` +
   String.raw`(?:(?:npx|bunx|pnpm\s+(?:dlx|exec)|yarn\s+dlx|sudo|env|command|exec|nohup|time|xargs)\s+(?:-\S+\s+)*(?:[A-Za-z_]\w*=\S*\s+)*)*(?:\S*\/)?`
-const DEPLOY_AT_START = new RegExp(COMMAND_START + COMMAND_PREFIX + DEPLOY.source.slice(2), 'i')
+/** `git` with its global options (`-C dir`, `-c k=v`, `--no-pager`) before the subcommand. */
+const GIT = String.raw`git\s+(?:-[cC]\s+\S+\s+|--?[\w-]+(?:=\S*)?\s+)*`
+/** Tools that rewrite a repository's history: refused for everyone. */
+export const HISTORY_REWRITE = new RegExp(String.raw`(?:${GIT}filter-(?:repo|branch)|bfg|java\s+(?:-\S+\s+)*-jar\s+\S*bfg[\w.-]*\.jar)(?![\w-])`, 'i')
+/** A push that overwrites the remote: `--force`, `-f` (or `-uf`), or a `+branch` refspec. */
+export const FORCE_PUSH = new RegExp(String.raw`${GIT}push(?![\w-])[^;&|\n)]*?\s(?:--force(?![\w-])|-[A-Za-z]*f[A-Za-z]*(?![\w-])|\+[^\s+])`, 'i')
+/** `git push --force-with-lease`: normal branch work, so devops-engineer only. */
+export const LEASE_PUSH = new RegExp(String.raw`${GIT}push(?![\w-])[^;&|\n)]*?\s--force-with-lease(?![\w-])`, 'i')
 
 /** A shell that runs a heredoc body or a quoted string as commands: keep that text. */
 const RUNS_HEREDOC = /\b(ba|z|da|k)?sh\s*$/
 const RUNS_QUOTED = /(\b(ba|z|da|k)?sh\s+(-\w+\s+)*-\w*c\s*|\beval\s+)$/
 
 /**
- * Whether a shell command actually runs a deploy, not merely mentions one.
+ * Whether a shell command actually runs `pattern`, not merely mentions it.
  * Heredoc bodies and quoted strings are dropped first (unless a shell runs
  * them: `bash -c "..."`, `eval '...'`, `bash <<EOF`, or `"$(...)"`), then the
- * deploy pattern must sit at a command position. When unsure, it says yes.
+ * pattern must sit at a command position. When unsure, it says yes.
  */
+export function runsCommand(command: string, pattern: RegExp): boolean {
+  const source = pattern.source.startsWith(String.raw`\b`) ? pattern.source.slice(2) : pattern.source
+  return new RegExp(COMMAND_START + COMMAND_PREFIX + `(?:${source})`, 'i').test(runnableText(command))
+}
+
+/** Whether a shell command actually runs a deploy, not merely mentions one. */
 export function runsDeploy(command: string): boolean {
+  return runsCommand(command, DEPLOY)
+}
+
+/** The command with inert text (heredoc bodies, quoted strings) emptied, so only what runs is left. */
+function runnableText(command: string): string {
   const noHeredocs = command.replace(
     /(?<!<)<<(-?)[ \t]*(['"]?)([A-Za-z_][\w.-]*)\2([^\n]*)(?:\n[\s\S]*?(?:\n[ \t]*\3[ \t]*(?=\n|$)|$)|$)/g,
     (all, _dash, _q, _tag, rest, offset: number, whole: string) => {
       const before = whole.slice(whole.lastIndexOf('\n', offset - 1) + 1, offset)
       return RUNS_HEREDOC.test(before) ? all : `<<HEREDOC${rest}`
     })
-  const noQuotes = noHeredocs.replace(/'[^']*'|"(?:[^"\\]|\\[\s\S])*"/g, (quoted, offset: number, whole: string) => {
+  return noHeredocs.replace(/'[^']*'|"(?:[^"\\]|\\[\s\S])*"/g, (quoted, offset: number, whole: string) => {
     const inner = quoted.slice(1, -1)
     if (RUNS_QUOTED.test(whole.slice(0, offset))) return `(${inner})`
     if (quoted[0] === '"' && /\$\(|\x60/.test(inner)) return `(${inner})`
     return quoted[0] + quoted[0]
   })
-  return DEPLOY_AT_START.test(noQuotes)
 }
 
 /** Scrapling (or any) settings that get past bot protection: always refused. */
@@ -67,6 +84,10 @@ export function roleName(type: string | undefined): string {
   return type.includes(':') ? type.slice(type.lastIndexOf(':') + 1) : type
 }
 
+/** Why a history rewrite or force push is refused (devops-engineer may still `--force-with-lease`). */
+export const HISTORY_LIMIT = "Rewriting git history is the person's call: it can't be undone and breaks other copies. " +
+  "Report the leaked key's location and rotation steps instead."
+
 /**
  * Why a call breaks a role's limit, or undefined when it may run. `role` is
  * the calling agent's short type, '' for the Chief of Staff.
@@ -83,6 +104,10 @@ export function roleLimit(role: string, tool: string, path: string, command: str
   if (role === 'creative-director' && BUILD_TOOLS.includes(tool) && !/\.md$/i.test(path)) {
     return `Role limit: creative-director writes only creative-brief.md and review notes (.md), not ${path}. ` +
       'Put the direction or the change you want in your notes; the Chief of Staff assigns the maker.'
+  }
+  if (tool === 'Bash' && (runsCommand(command, HISTORY_REWRITE) || runsCommand(command, FORCE_PUSH) ||
+    (role !== 'devops-engineer' && runsCommand(command, LEASE_PUSH)))) {
+    return HISTORY_LIMIT
   }
   if (tool === 'Bash' && runsDeploy(command) && role !== 'devops-engineer') {
     return 'Role limit: only devops-engineer deploys. ' +
@@ -107,6 +132,7 @@ export const TEAM: { type: string; does: string }[] = [
   { type: 'chief-of-staff:seo-specialist', does: 'keywords, metadata, sitemap, structured data' },
   { type: 'chief-of-staff:qa-tester', does: 'testing, automated tests, bug reports' },
   { type: 'chief-of-staff:security-reviewer', does: 'read-only security review before release' },
+  { type: 'chief-of-staff:security-engineer', does: 'fixes security problems and hardens the app (auth, inputs, headers, secrets, dependencies); does not deploy' },
   { type: 'chief-of-staff:devops-engineer', does: 'hosting, CI, env vars, release checks' },
 ]
 
@@ -130,6 +156,7 @@ export const CHIEF_OF_STAFF = [
   '- Web research (crawling a site, capturing pages as Markdown, SEO audits) goes to seo-specialist, marketing-strategist or reverse-engineer; they may use the Scrapling MCP tools if installed. Getting past CAPTCHAs or Cloudflare is blocked for everyone.',
   '- "How does <another product> do <feature>?" goes to reverse-engineer first; the team then builds an original version from its report. Never copy another product\'s code, text or assets.',
   '- Anything with a form, login, payment, API or user data also gets security-reviewer before it is called done.',
+  '- Security hardening runs reviewer, engineer, reviewer: security-reviewer audits first, security-engineer fixes what it found, then security-reviewer re-tests independently and writes the final report. Key rotation at a provider and git history rewrites go back to the person (history rewrites and force pushes are blocked for everyone).',
   '- One agent, one role: if a brief would ask an agent to do another role\'s work, split it and assign that part to the other role.',
   '',
   'Superpowers, if installed:',
