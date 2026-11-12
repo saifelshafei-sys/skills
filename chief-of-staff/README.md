@@ -1,6 +1,6 @@
 # chief-of-staff
 
-Makes your main Claude Code session a Chief of Staff that delegates to eleven named agents
+Makes your main Claude Code session a Chief of Staff that delegates to twelve named agents
 (this plugin was called `website-team` before 0.6.0). The Chief of Staff plans and assigns the work; with the `agent-board` plugin each one shows on the board under its
 department, greyed out while idle and as a live card while it works.
 
@@ -13,6 +13,7 @@ department, greyed out while idle and as a live card while it works.
 | `backend-developer` | Engineering | APIs, database, auth, integrations |
 | `qa-tester` | Quality & testing | End-to-end and automated tests, bug reports |
 | `security-reviewer` | Security | Read-only security review with ranked findings and fixes |
+| `security-engineer` | Security | Fixes what the reviewer found and hardens the app (auth, inputs, headers, secrets, dependencies, monitoring); never deploys |
 | `marketing-strategist` | Marketing & growth | Audience, positioning, page message order, CTA |
 | `copywriter` | Marketing & growth | Every word on the site |
 | `seo-specialist` | Marketing & growth | Keywords, metadata, sitemap, structured data |
@@ -27,8 +28,11 @@ Your main session is the Chief of Staff. Two things make it delegate:
 - **Role limits.** `reverse-engineer` and `creative-director` write only `.md` notes (its brief and reviews). `web-designer` cannot write scripts, build or config files (`.js`, `.ts`, `.py`,
   `.sh`, `wrangler.*`, `package.json`, CI files); styles, HTML and component markup are fine. Only
   `devops-engineer` can run deploy commands (`wrangler deploy`, `vercel --prod`, ...), the Chief of
-  Staff included. A blocked agent is told who the work belongs to.
-- **Instructions.** A "Chief of Staff" section in the main session's instructions lists the eleven roles
+  Staff included. Rewriting git history is refused for everyone, the Chief of Staff included:
+  `git filter-repo`, `git filter-branch`, BFG and force pushes (`--force`, `-f`, `+branch`); only
+  `devops-engineer` may `git push --force-with-lease`. Leaked keys are reported with their location and
+  rotation steps for you to act on. A blocked agent is told who the work belongs to.
+- **Instructions.** A "Chief of Staff" section in the main session's instructions lists the twelve roles
   and how to run the work: split it, brief each agent fully, run independent tasks in parallel, check
   reports, sum up. Agents never get this section.
 
@@ -37,7 +41,8 @@ rule is on. Turn it off and on per machine with `/delegate off` and `/delegate o
 the setting.
 
 You can also ask for roles directly: "Have the web designer and the frontend developer build the homepage,
-then the security reviewer check it." Edit any file in `agents/` to change a role.
+then the security reviewer check it." For hardening, the security reviewer audits, the security engineer
+fixes, and the security reviewer re-tests. Edit any file in `agents/` to change a role.
 
 ## Install
 

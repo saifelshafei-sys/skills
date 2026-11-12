@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { bypassLimit, roleLimit, runsDeploy } from '../hooks/register'
+import { bypassLimit, HISTORY_REWRITE, roleLimit, runsCommand, runsDeploy } from '../hooks/register'
 
 const IN = (tools: string[]) => ({ model: 'm', promptModel: 'm', surfaces: [], tools, outputStyle: null, traits: [] })
 const BASE = { sections: [{ id: 'intro', text: 'engine intro', scope: 'shared' as const }] }
@@ -16,6 +16,8 @@ test('the main session gets the Chief of Staff section', async ($, on) => {
   expect(chief?.text.includes('start with creative-director (direction)')).toBe(true)
   expect(chief?.text.includes('goes to reverse-engineer first')).toBe(true)
   expect(chief?.text.includes('Use Superpowers to plan, never to implement yourself')).toBe(true)
+  expect(chief?.text.includes('chief-of-staff:security-engineer')).toBe(true)
+  expect(chief?.text.includes('Security hardening runs reviewer, engineer, reviewer')).toBe(true)
   expect(out.sections[0]?.id).toBe('intro')
 })
 
@@ -109,6 +111,39 @@ test('deploy limit: running a deploy is blocked, mentioning one is not', () => {
   }
   expect(runsDeploy('wrangler deploy')).toBe(true)
   expect(roleLimit('devops-engineer', 'Bash', '', 'wrangler deploy')).toBeUndefined()
+})
+
+test('history limit: rewriting git history or force pushing is blocked for everyone', () => {
+  const blocked = (role: string, cmd: string) => `${role}: ${cmd} ${roleLimit(role, 'Bash', '', cmd) ?? 'allowed'}`
+  for (const cmd of ['git filter-repo --path .env --invert-paths', 'bfg --delete-files .env', 'git push --force origin main',
+    'git push -f', 'git push -uf origin main', 'git push origin +main', 'git rebase -i HEAD~3 && git push --force', 'java -jar bfg-1.14.0.jar --delete-files .env',
+    'git -C site filter-branch --tree-filter "rm -f .env" HEAD', 'bash -c "git push --force"', 'git push --force-with-lease']) {
+    expect(blocked('security-engineer', cmd)).toContain("Rewriting git history is the person's call")
+  }
+  for (const cmd of ['git log -p | grep -i api_key', 'echo "never run git filter-repo"', 'git push origin main', 'git push --follow-tags',
+    'gitleaks detect --source .', "grep -r 'git push --force' docs/", 'git rebase main', 'git commit -m "explain bfg"']) {
+    expect(blocked('security-engineer', cmd)).toBe(`security-engineer: ${cmd} allowed`)
+  }
+  // devops-engineer may push with a lease, but not plain --force or a filter tool
+  expect(roleLimit('devops-engineer', 'Bash', '', 'git push --force-with-lease')).toBeUndefined()
+  expect(roleLimit('devops-engineer', 'Bash', '', 'git rebase main && git push --force-with-lease origin feat')).toBeUndefined()
+  expect(String(roleLimit('devops-engineer', 'Bash', '', 'git push --force origin main'))).toContain('Rewriting git history')
+  expect(String(roleLimit('devops-engineer', 'Bash', '', 'git filter-repo --path .env --invert-paths'))).toContain('Rewriting git history')
+  // the main session too
+  expect(String(roleLimit('', 'Bash', '', 'git filter-branch --index-filter "git rm --cached .env" HEAD'))).toContain('Rewriting git history')
+  expect(runsCommand('git filter-repo --analyze', HISTORY_REWRITE)).toBe(true)
+  expect(runsCommand('echo git filter-repo', HISTORY_REWRITE)).toBe(false)
+})
+
+test('a security-engineer agent is refused a force push through the hook', async ($, on) => {
+  on('agent.list', () => ({ value: [{ id: 's1', type: 'chief-of-staff:security-engineer', description: '', status: 'running' }] }))
+  on('tool.call', () => ({ result: {} }))
+  const push = await $.tool.call({ tool: 'Bash', command: 'git push --force origin main', agentId: 's1' } as never)
+  expect(String((push as { deny?: string }).deny)).toContain("Rewriting git history is the person's call")
+  const scan = await $.tool.call({ tool: 'Bash', command: 'git log -p | grep -i api_key', agentId: 's1' } as never)
+  expect((scan as { deny?: string }).deny).toBeUndefined()
+  const fix = await $.tool.call({ tool: 'Edit', file_path: '/site/server.ts', old_string: 'a', new_string: 'b', agentId: 's1' } as never)
+  expect((fix as { deny?: string }).deny).toBeUndefined()
 })
 
 test('a web-designer agent is refused a .js file; a frontend-developer is not', async ($, on) => {
