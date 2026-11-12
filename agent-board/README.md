@@ -27,13 +27,15 @@ Tip: agents show by their `name`, so ask the Chief of Staff to name agents by ro
 At the prompt of a terminal session:
 
 ```
-/plugin install agent-board --marketplace saifelshafei-sys/skills
+/plugin marketplace add saifelshafei-sys/skills
+/plugin install agent-board@saifelshafei-skills
 ```
 
 From a shell:
 
 ```bash
-claude plugin install agent-board --marketplace saifelshafei-sys/skills
+claude plugin marketplace add saifelshafei-sys/skills
+claude plugin install agent-board@saifelshafei-skills
 ```
 
 In the desktop app: click + next to the prompt box, then Plugins, Add marketplace with

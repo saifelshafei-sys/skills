@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { bypassLimit, roleLimit } from '../hooks/register'
+import { bypassLimit, roleLimit, runsDeploy } from '../hooks/register'
 
 const IN = (tools: string[]) => ({ model: 'm', promptModel: 'm', surfaces: [], tools, outputStyle: null, traits: [] })
 const BASE = { sections: [{ id: 'intro', text: 'engine intro', scope: 'shared' as const }] }
@@ -96,6 +96,19 @@ test('role limits: what each role may and may not do', () => {
   for (const cmd of ['npm run build', 'npx wrangler dev', 'npm test', 'git status']) {
     expect(`${cmd} ${roleLimit('web-designer', 'Bash', '', cmd) ?? 'allowed'}`).toBe(`${cmd} allowed`)
   }
+})
+
+test('deploy limit: running a deploy is blocked, mentioning one is not', () => {
+  for (const cmd of ['wrangler deploy', 'npx wrangler pages deploy dist', 'cd site && npm run deploy', 'FOO=1 vercel --prod', 'bash -c "wrangler deploy"',
+    "eval 'netlify deploy'", 'echo "$(firebase deploy)"', 'npm test; ./node_modules/.bin/wrangler deploy', 'bash <<EOF\nwrangler deploy\nEOF', "cat <<'EOF' > a.txt && vercel deploy\nhi\nEOF"]) {
+    expect(`${cmd} ${roleLimit('frontend-developer', 'Bash', '', cmd) ?? 'allowed'}`).toContain('only devops-engineer deploys')
+  }
+  for (const cmd of ["cat > page.html <<'EOF'\n<p>Run wrangler deploy to ship</p>\nEOF", 'cat <<EOF > a.md\nnpx vercel --prod\nEOF', 'cat <<-"EOF" > b.md\n\tnetlify deploy\n\tEOF',
+    'echo "run wrangler deploy later"', "grep -r 'netlify deploy' docs/", 'git commit -m "docs: explain firebase deploy"', 'cat <<<"wrangler deploy"']) {
+    expect(`${cmd} ${roleLimit('frontend-developer', 'Bash', '', cmd) ?? 'allowed'}`).toBe(`${cmd} allowed`)
+  }
+  expect(runsDeploy('wrangler deploy')).toBe(true)
+  expect(roleLimit('devops-engineer', 'Bash', '', 'wrangler deploy')).toBeUndefined()
 })
 
 test('a web-designer agent is refused a .js file; a frontend-developer is not', async ($, on) => {
