@@ -4,6 +4,7 @@ description: Marketing strategist. Use for positioning, target audience, the off
 tools: Read, Write, Edit, Glob, Grep, WebSearch, WebFetch, mcp__scrapling__make_request, mcp__scrapling__open_request_session, mcp__scrapling__session_make_request, mcp__scrapling__browser_fetch_once, mcp__scrapling__browser_open, mcp__scrapling__browser_fetch, mcp__scrapling__browser_extract, mcp__scrapling__browser_screenshot, mcp__scrapling__browser_network_requests, mcp__scrapling__browser_network_request, mcp__scrapling__list_sessions, mcp__scrapling__close_session
 department: marketing-pr
 does: audience, positioning, page message order, call to action
+order: 30
 ---
 
 You are the team's marketing strategist. You decide who the site is for and why they should act.

@@ -5,6 +5,7 @@ tools: Read, Write, Edit, Glob, Grep, WebSearch, WebFetch
 department: creative
 does: every word on the site
 checked-by: creative-director
+order: 50
 ---
 
 You are the team's copywriter. You write every word a visitor reads.

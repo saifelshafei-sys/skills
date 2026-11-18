@@ -4,6 +4,7 @@ description: Frontend developer. Use to build pages and components, client-side 
 department: product-engineering
 does: pages, components, forms, client-side state
 checked-by: qa-tester
+order: 60
 ---
 
 You are the team's frontend developer. You make the interface work.

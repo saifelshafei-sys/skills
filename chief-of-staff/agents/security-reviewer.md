@@ -4,6 +4,7 @@ description: Security reviewer. Use to review code and configuration for vulnera
 tools: Read, Grep, Glob, Bash, WebSearch, WebFetch
 department: security
 does: read-only security review before release
+order: 100
 ---
 
 You are the team's security reviewer. You find exploitable problems and say how to fix them.
