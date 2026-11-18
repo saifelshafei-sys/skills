@@ -1,0 +1,101 @@
+{
+  "departments": [
+    {
+      "id": "product-engineering",
+      "name": "Product & Engineering",
+      "purpose": "research, build, test and ship the product",
+      "default": "on",
+      "rules": [
+        "frontend-developer writes pages, components and any client-side JavaScript or TypeScript; backend-developer writes servers, APIs, data and server-side scripts.",
+        "devops-engineer owns build, hosting, CI and deploy steps (wrangler, Docker, pipelines). Deploy commands are blocked for everyone else, you included.",
+        "Building or rebuilding a page is never one task: at least web-designer, then frontend-developer, then qa-tester."
+      ]
+    },
+    {
+      "id": "security",
+      "name": "Security",
+      "purpose": "find and fix security problems before release",
+      "default": "on",
+      "rules": [
+        "Security hardening runs reviewer, engineer, reviewer: security-reviewer audits first, security-engineer fixes what it found, then security-reviewer re-tests independently and writes the final report. Key rotation at a provider and git history rewrites go back to the person (history rewrites and force pushes are blocked for everyone)."
+      ]
+    },
+    {
+      "id": "creative",
+      "name": "Creative",
+      "purpose": "creative direction, design and words",
+      "default": "on",
+      "rules": [
+        "web-designer produces the design only: layout, styles, design tokens, visual specs. It does not write JavaScript, Python, build scripts or deploy steps.",
+        "web-designer is blocked from writing scripts, build and config files (.js, .ts, .py, wrangler, package.json); route that work to the developers or DevOps from the start.",
+        "New pages, redesigns, campaigns and brand work start with creative-director (direction), then copywriter and web-designer work from its brief, then creative-director reviews their output; only approved work goes to frontend-developer.",
+        "creative-director advises and approves; it writes only creative-brief.md and review notes, never code or page files."
+      ]
+    },
+    {
+      "id": "marketing-pr",
+      "name": "Marketing & PR",
+      "purpose": "audience, positioning, message and search",
+      "default": "on",
+      "rules": [
+        "copywriter writes the words; marketing-strategist decides the message first when the page is new or repositioned; seo-specialist sets titles, metadata and structure."
+      ]
+    },
+    {
+      "id": "social",
+      "name": "Social",
+      "purpose": "social media posts, replies and community",
+      "default": "on",
+      "rules": []
+    },
+    {
+      "id": "sales",
+      "name": "Sales",
+      "purpose": "leads, outreach, proposals and the pipeline",
+      "default": "off",
+      "rules": []
+    },
+    {
+      "id": "data-analytics",
+      "name": "Data & Analytics",
+      "purpose": "metrics, dashboards, analysis and experiments",
+      "default": "off",
+      "rules": []
+    },
+    {
+      "id": "finance",
+      "name": "Finance",
+      "purpose": "budgets, invoices, pricing and financial reports",
+      "default": "off",
+      "rules": []
+    },
+    {
+      "id": "risk-audit-compliance",
+      "name": "Risk, Audit & Compliance",
+      "purpose": "risk registers, audits, policies and regulatory checks",
+      "default": "off",
+      "rules": []
+    },
+    {
+      "id": "legal",
+      "name": "Legal",
+      "purpose": "contracts, terms, privacy and intellectual property",
+      "default": "off",
+      "rules": []
+    },
+    {
+      "id": "operations-people",
+      "name": "Operations & People",
+      "purpose": "processes, tools, hiring and onboarding",
+      "default": "off",
+      "rules": []
+    },
+    {
+      "id": "strategy-research",
+      "name": "Strategy & Research",
+      "purpose": "market research, competitors and business strategy",
+      "default": "off",
+      "rules": []
+    }
+  ]
+}
