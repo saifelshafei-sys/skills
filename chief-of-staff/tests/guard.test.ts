@@ -106,14 +106,14 @@ test('/delegate credits ask | free is stored and shown', async ($, on) => {
   on('ui.status', () => ({ value: undefined }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  expect(JSON.stringify(await $.command.run({ command: 'delegate', args: '' } as never))).toContain('Generation credits: free')
-  expect(JSON.stringify(await $.command.run({ command: 'delegate', args: 'credits ask' } as never))).toContain('Generation credits: ask')
+  expect(JSON.stringify(await $.command.run({ origin: { kind: 'composer' }, command: 'delegate', args: '' } as never))).toContain('Generation credits: free')
+  expect(JSON.stringify(await $.command.run({ origin: { kind: 'composer' }, command: 'delegate', args: 'credits ask' } as never))).toContain('Generation credits: ask')
   expect(kept.get('credits')).toBe('ask')
-  expect(JSON.stringify(await $.command.run({ command: 'delegate', args: '' } as never))).toContain('Generation credits: ask')
-  await $.command.run({ command: 'delegate', args: 'credits free' } as never)
+  expect(JSON.stringify(await $.command.run({ origin: { kind: 'composer' }, command: 'delegate', args: '' } as never))).toContain('Generation credits: ask')
+  await $.command.run({ origin: { kind: 'composer' }, command: 'delegate', args: 'credits free' } as never)
   expect(kept.get('credits')).toBe('free')
-  expect(JSON.stringify(await $.command.run({ command: 'delegate', args: 'credits maybe' } as never))).toContain('Use /delegate')
-  expect(JSON.stringify(await $.command.run({ command: 'delegate', args: 'off' } as never))).toContain('stay on')
+  expect(JSON.stringify(await $.command.run({ origin: { kind: 'composer' }, command: 'delegate', args: 'credits maybe' } as never))).toContain('Use /delegate')
+  expect(JSON.stringify(await $.command.run({ origin: { kind: 'composer' }, command: 'delegate', args: 'off' } as never))).toContain('stay on')
 })
 
 test('shell commands an agent runs only with the person\'s OK', async ($, on) => {
@@ -150,10 +150,10 @@ test('regex gaps: force push and deploy spellings', () => {
   }
   for (const c of ['npx wrangler@3 deploy', 'node node_modules/wrangler/bin/wrangler.js deploy', 'npm run-script deploy', 'pnpm -C site deploy',
     'pnpm --filter web deploy', 'npx netlify-cli deploy --prod', 'make deploy', 'make -C site deploy', 'vercel', 'npx vercel', 'bunx --bun wrangler deploy',
-    'npx wrangler versions deploy', 'yarn --cwd site deploy', 'npx firebase-tools deploy']) {
+    'npx wrangler versions deploy', 'yarn --cwd site deploy', 'npx firebase-tools deploy', 'npm run deploy-docs']) {
     expect(`${c} ${runsDeploy(c)}`).toBe(`${c} true`)
   }
-  for (const c of ['make build', 'make test; echo deploy', 'vercel dev', 'vercel env pull', 'npm run deploy-docs', 'npx wrangler dev', 'echo "make deploy"']) {
+  for (const c of ['make build', 'make test; echo deploy', 'vercel dev', 'vercel env pull', 'npx wrangler dev', 'echo "make deploy"']) {
     expect(`${c} ${runsDeploy(c)}`).toBe(`${c} false`)
   }
   expect(runsCommand('git filter-repo --analyze', HISTORY_REWRITE)).toBe(true)
@@ -200,10 +200,13 @@ test('protected paths: the plugin, installed plugins and their store, Claude Cod
   const at = { roots: ['/opt/plugins/chief-of-staff', '/real/chief-of-staff'], configDirs: ['/home/u/.claude', '/cfg'] }
   for (const p of ['/opt/plugins/chief-of-staff/agents/web-designer.md', '/opt/plugins/chief-of-staff', '/real/chief-of-staff/hooks/register.ts',
     '/home/u/.claude/plugins/store/chief-of-staff.json', '/root/.claude/plugins/cache/x/y.ts', '~/.claude/settings.json', '/home/u/.claude/settings.local.json',
-    'C:\\Users\\u\\.claude\\settings.json', '/cfg/plugins/x', '/cfg/settings.json', '/site/.claude/settings.json', '/OPT/Plugins/Chief-Of-Staff/x.md']) {
+    'C:\\Users\\u\\.claude\\settings.json', '/cfg/plugins/x', '/cfg/settings.json', '/site/.claude/settings.json', '/OPT/Plugins/Chief-Of-Staff/x.md',
+    // 0.10 round 3: Claude Code's own config is protected too
+    '/home/u/.claude/CLAUDE.md', '/home/u/.claude/agents/x.md', '/home/u/.claude/skills/s/SKILL.md', '/home/u/.claude/commands/c.md', '/site/.claude/hooks/h.sh',
+    '/home/u/.claude.json', '/site/.mcp.json', '/etc/claude-code/managed-settings.json', '~/.claude/./settings.json', '~/.claude/x/../plugins/store/s.json']) {
     expect(`${p} ${isProtectedPath(p, at)}`).toBe(`${p} true`)
   }
-  for (const p of ['/site/index.html', '/opt/plugins/chief-of-staff-notes/a.md', '/home/u/.claude/CLAUDE.md', '/home/u/.claude/agents/x.md', '/cfg/notes.md']) {
+  for (const p of ['/site/index.html', '/opt/plugins/chief-of-staff-notes/a.md', '/cfg/notes.md', '/site/CLAUDE.md', '/home/u/.claude/keybindings.json']) {
     expect(`${p} ${isProtectedPath(p, at)}`).toBe(`${p} false`)
   }
   const spell = ['/opt/plugins/chief-of-staff', '.claude/plugins', '.claude/settings']

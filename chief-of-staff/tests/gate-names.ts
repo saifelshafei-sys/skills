@@ -33,7 +33,7 @@ export const MUST_PASS = [
   'mcp__Taplio__list_posts', 'mcp__Taplio__get_post', 'mcp__Taplio__find_posts_to_comment', 'mcp__Taplio__find_comments_to_reply',
   'mcp__Taplio__list_comment_drafts', 'mcp__Taplio__get_comment_draft', 'mcp__Taplio__list_comment_feeds',
   'mcp__Taplio__get_connection_request', 'mcp__Taplio__list_connection_requests', 'mcp__Taplio__get_post_like',
-  'mcp__Google_Calendar__list_events', 'mcp__Google_Calendar__suggest_time', 'mcp__Google_Calendar__get_event',
+  'mcp__Google_Calendar__list_events', 'mcp__Google_Calendar__get_event',
   'mcp__Higgsfield__estimate_video_cost', 'mcp__Higgsfield__list_projects', 'mcp__Higgsfield__get_project_publication',
   'mcp__Higgsfield__get_playable_game_publication', 'mcp__Higgsfield__get_project_sharing', 'mcp__Canva__search-designs',
   'mcp__Canva__list-comments', 'mcp__Canva__list-replies', 'mcp__Canva__generate-design', 'mcp__Booking_com__accommodations_search',
@@ -46,6 +46,7 @@ export const MUST_PASS = [
  * read word or noun (gpu, tiktok), or runs code (browser_exec).
  */
 export const NOW_ASK = [
+  'mcp__Google_Calendar__suggest_time',
   'mcp__Gmail__untrash_message', 'mcp__Gmail__label_message', 'mcp__Taplio__cancel_like', 'mcp__Taplio__unschedule',
   'mcp__Taplio__cancel_comment_draft', 'mcp__Higgsfield__tiktok_publish_status', 'mcp__Higgsfield__tiktok_prepare_publish',
   'mcp__Higgsfield__gpu_job_quote', 'mcp__Higgsfield__gpu_job_status', 'mcp__Higgsfield__save_project_publication_preview',

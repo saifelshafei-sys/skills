@@ -1,7 +1,9 @@
 import type { EngineInterface, Register } from 'claude-code'
 
 import { checkMcp, toolWords } from './gate'
-import { LEASE_PUSH, rewritesHistory, runsCommand, runsDeploy, shellNeedsPerson, shellWritesTo } from './shell'
+import { classify, hasFolder, mentionsProtected, normalize } from './paths'
+import type { PathClass, Protected } from './paths'
+import { destinations, MAX_COMMAND, plainText, rewritesHistory, runsDeploy, runsLeasePush, shellNeedsPerson } from './shell'
 import {
   agentNamed, annotate, brokenLine, buildTeam, checkLines, confirmLines, departmentRules, EMPTY_TEAM,
   enabledIds, isClean, MAX_FILE_BYTES, offLine, ownName, PLUGIN, strictest, teamLines,
@@ -9,6 +11,7 @@ import {
 import type { Agent, Team, WriteLimit } from './team'
 
 export * from './gate'
+export * from './paths'
 export * from './shell'
 export * from './team'
 
@@ -51,15 +54,24 @@ export const FLOOR: Readonly<Record<string, { writeLimit: WriteLimit; canDeploy:
 }
 
 /** Scrapling (or any) settings that get past bot protection: always refused. */
+/** Keys whose truthy value gets past bot protection (Scrapling's and any): always refused. */
 export const BYPASS_ARGS = /^(solve_cloudflare|solve_captcha|captcha.*|bypass.*)$/i
-export const BYPASS_SHELL = /(--solve-cloudflare\b|solve_cloudflare\s*=\s*True|solve_cloudflare["']?\s*:\s*true)/i
+/** The same in a command line: the `--solve-...` flag in either spelling, or the key set to a truthy value with `=` or `:`, any quotes. */
+export const BYPASS_SHELL = /--solve[-_](?:cloudflare|captcha)\b|\bsolve_(?:cloudflare|captcha)\b['"]?\s*[=:]\s*['"]?(?:true|1|yes|on)\b/i
+const TRUTHY = (v: unknown) => v === true || v === 1 || (typeof v === 'string' && /^(?:true|1|yes|on)$/i.test(v.trim()))
 
-/** Why a call tries to get past a site's bot protection, or undefined. */
+/** Whether some key at most four levels down asks to get past bot protection with a truthy value. */
+function bypassIn(value: unknown, depth = 0): boolean {
+  if (depth > 4 || !value || typeof value !== 'object') return false
+  return Object.entries(value).some(([k, v]) => (BYPASS_ARGS.test(k) && TRUTHY(v)) || bypassIn(v, depth + 1))
+}
+
+/** Why a call tries to get past a site's bot protection, or undefined. Refused for everyone, always. */
 export function bypassLimit(tool: string, fields: Record<string, unknown>): string | undefined {
   const why = 'Not allowed: this team does not get past CAPTCHAs, Cloudflare challenges or other bot protection. ' +
     'If a site blocks normal access, report it as blocked and move on (or use its public pages, an official API, or ask the person).'
-  if (tool.startsWith('mcp__') && Object.entries(fields).some(([k, v]) => BYPASS_ARGS.test(k) && v === true)) return why
-  if (tool === 'Bash' && typeof fields.command === 'string' && BYPASS_SHELL.test(fields.command)) return why
+  if (tool.startsWith('mcp__') && bypassIn(fields)) return why
+  if (commandFields(fields).some(c => BYPASS_SHELL.test(c.slice(0, MAX_COMMAND * 4)))) return why
   return undefined
 }
 
@@ -131,7 +143,7 @@ export function writeLimitWhy(limits: Limits, path: string): string | undefined 
 /** Why a caller with these limits may not run `command`, or undefined. */
 export function commandLimitWhy(limits: Limits, command: string, team: Team): string | undefined {
   if (rewritesHistory(command)) return HISTORY_LIMIT
-  if (!limits.canDeploy && runsCommand(command, LEASE_PUSH)) return HISTORY_LIMIT
+  if (!limits.canDeploy && runsLeasePush(command)) return HISTORY_LIMIT
   if (!limits.canDeploy && runsDeploy(command)) {
     const can = deployers(team)
     if (can.length === 0) return 'Role limit: no role on the team may deploy right now (devops-engineer must be on the team with can-deploy: true in a clean agent file).'
@@ -155,31 +167,87 @@ export function roleLimit(role: string, tool: string, path: string, command: str
   return undefined
 }
 
-/** Paths no agent may write: the plugin itself, installed plugins and their store, Claude Code's settings. */
-export type Protected = { roots: string[]; configDirs: string[] }
-
-/** Whether a path (raw or resolved) is one no agent may write. */
-export function isProtectedPath(path: string, at: Protected): boolean {
-  const p = path.replace(/\\/g, '/').replace(/\/+/g, '/').toLowerCase()
-  if (/(^|\/)\.claude\/plugins(\/|$)/.test(p) || /(^|\/)\.claude\/settings[^/]*\.json$/.test(p)) return true
-  const under = (dir: string) => {
-    const d = dir.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
-    return d !== '' && (p === d || p.startsWith(`${d}/`))
+/**
+ * Whether a shell command writes to a protected place, as best it can tell:
+ * a destination it can read (redirect, tee, cp, mv, sed -i, curl -o, tar -C,
+ * ...) that is protected or names the plugin's folder; or a write it cannot
+ * follow (an inline interpreter, a script, a variable in the destination)
+ * in a command that mentions a protected place. Plain reads pass: only the
+ * destination counts.
+ */
+export function shellProtected(command: string, at: Protected): PathClass {
+  if (command.length > MAX_COMMAND) return 'deny'
+  const { dests, opaque } = destinations(command)
+  const plain = plainText(command)
+  if (opaque && mentionsProtected(plain, at)) return 'deny'
+  let worst: PathClass
+  for (const d of dests) {
+    if (d.path.dynamic) { if (mentionsProtected(plain, at)) return 'deny'; continue }
+    const n = normalize(d.path.text, at.home)
+    if (n === undefined || hasFolder(n, at)) return 'deny'
+    const c = classify(n, at)
+    if (c === 'deny') return 'deny'
+    if (c === 'ask') worst = 'ask'
   }
-  if (at.roots.some(under)) return true
-  return at.configDirs.some(d => under(`${d}/plugins`) || new RegExp(`^${escape(d.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase())}/settings[^/]*\\.json$`).test(p))
+  return worst
 }
 
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** shellProtected with the protected places given as spellings (the plugin's folder, `.claude/...`): for tests and tools. */
+export function shellWritesTo(command: string, spellings: string[]): boolean {
+  const roots = spellings.filter(s => !/(^|\/)\.claude(\/|$)/.test(s.replace(/\\/g, '/')))
+  const configDirs = spellings.filter(s => /\/\.claude\/(plugins|settings)$/.test(s)).map(s => s.replace(/\/(plugins|settings)$/, ''))
+  return shellProtected(command, { roots, configDirs: [...new Set(configDirs)], home: undefined }) === 'deny'
+}
 
-/** Spellings of the protected places, for spotting a shell command that writes there. */
-export function protectedSpellings(at: Protected): string[] {
-  return [...at.roots, ...at.configDirs.flatMap(d => [`${d}/plugins`, `${d}/settings`]), '.claude/plugins', '.claude/settings']
+/** The command-like fields a tool's input can carry: Bash, Monitor and PowerShell's `command`, an MCP process tool's. */
+export const COMMAND_FIELDS = ['command', 'cmd', 'input', 'script', 'code']
+/** MCP tools that run commands or code (by the words of their own name, so `desktop-commander` is not one). */
+const MCP_RUNS = /(?:^|_)(?:process|processes|exec|execute|shell|command|commands|terminal|bash|run|script|code|eval|sandbox|python|interact)(?:_|$)/
+/** MCP tools that write, move or produce files: their path-like arguments are checked. */
+const MCP_WRITES = /(?:^|_)(?:write|edit|move|copy|put|save|download|export|output|generate|upload|create|extract|convert|unzip|rename|append|replace|patch|delete|remove|mkdir|insert|block)(?:_|$)/
+
+/** The commands a call runs: a non-MCP tool's string `command`, or an MCP process tool's command-like fields. */
+export function commandsOf(tool: string, fields: Record<string, unknown>): string[] {
+  if (!tool.startsWith('mcp__')) return typeof fields.command === 'string' ? [fields.command] : []
+  if (!MCP_RUNS.test(toolWords(tool))) return []
+  return commandFields(fields)
+}
+
+/** Strings under command-like keys (command, cmd, input, script, code), up to four levels down. */
+function commandFields(value: unknown, depth = 0, out: string[] = []): string[] {
+  if (depth > 4 || !value || typeof value !== 'object') return out
+  for (const [k, v] of Object.entries(value)) {
+    if (COMMAND_FIELDS.includes(k)) strings(v, 0, out, 2)
+    else commandFields(v, depth + 1, out)
+  }
+  return out
+}
+
+/** Whether an MCP tool's name says it writes, moves or produces files. */
+export const mcpWrites = (tool: string) => MCP_WRITES.test(toolWords(tool))
+
+/** String fields that look like paths: start with `/`, `~`, `./` or `../`, or hold a `/` and a file extension; no URLs, no spaces. */
+export function pathLike(fields: Record<string, unknown>): string[] {
+  const out: string[] = []
+  const walk = (v: unknown, depth: number) => {
+    if (typeof v === 'string') {
+      const t = v.trim()
+      if (t.length > 0 && t.length < 4096 && !/\s/.test(t) && !t.includes('://') &&
+        (/^(?:\/|~|\.\.?\/|[A-Za-z]:[\\/])/.test(t) || (/[\\/]/.test(t) && /\.[A-Za-z0-9]{1,8}$/.test(t)))) out.push(t)
+    } else if (depth < 4 && v && typeof v === 'object') {
+      for (const [k, x] of Object.entries(v)) if (!OWN_FIELDS.has(k)) walk(x, depth + 1)
+    }
+  }
+  walk(fields, -1)
+  return out
 }
 
 export const PROTECTED_LIMIT = (path: string) =>
-  `Not allowed: agents do not change this plugin, installed plugins, their store or Claude Code's settings (${path}). ` +
+  `Not allowed: agents do not change this plugin, installed plugins, their store, or Claude Code's settings, agents, skills, commands, hooks, MCP or memory files (${path}). ` +
   'Report the change you want; the person makes it.'
+export const UNRESOLVED_LIMIT = (path: string) =>
+  `Not allowed: the path ${path} cannot be resolved, so it cannot be checked. Use a plain absolute path.`
+export const TOO_LONG = `Not allowed: the command is over ${MAX_COMMAND / 1024} KB, too long to check. Split it, or write a script file and run that.`
 
 /** The confirm gate's message, for the dialog and, where nobody can be asked, for the agent. */
 export const CONFIRM = 'Draft it and report back; the Chief of Staff does this only after the person confirms.'
@@ -225,6 +293,10 @@ const INTRO = [
   'Your team, by department (pass the type as subagent_type, and set name to the short role, e.g. "web-designer"):',
 ]
 
+/** The opening and closing lines while the person has turned delegation off (/delegate off): no no-edit rule. */
+const INTRO_CAN_EDIT = 'You run a team of specialist agents. The person has turned delegation off (/delegate off), so you may edit files yourself; still delegate work that fits a role to the team with the Agent tool, plan, assign, coordinate, check results, and report to the person.'
+const OUTRO_CAN_EDIT = 'Answer plain questions and talk with the person yourself. If no team role fits a task, use general-purpose or do it yourself, and say so.'
+
 /** Routing rules that span departments: always in the prompt, with a note for a named role that cannot be assigned now. */
 export const CORE_RULES = [
   '- Web research (crawling a site, capturing pages as Markdown, SEO audits) goes to seo-specialist, marketing-strategist or reverse-engineer; they may use the Scrapling MCP tools if installed. Getting past CAPTCHAs or Cloudflare is blocked for everyone.',
@@ -258,7 +330,7 @@ const OUTRO = [
  * problems, department rules, maker-checker and confirm lines, then the core
  * text. A rule that names a role that cannot be assigned now says so.
  */
-export function chiefPrompt(team: Team, on: Set<string>): string {
+export function chiefPrompt(team: Team, on: Set<string>, canEdit = false): string {
   const off = offLine(team, on)
   const broken = brokenLine(team)
   const list = teamLines(team, on)
@@ -266,7 +338,7 @@ export function chiefPrompt(team: Team, on: Set<string>): string {
     ? '- (no agents could be loaded: use general-purpose and tell the person to check the plugin with /team)'
     : '- (no department with assignable agents is on: tell the person, who can turn one on with /team on <id>)'
   return [
-    ...INTRO,
+    ...(canEdit ? INTRO.map(l => (l.startsWith('You run a team') ? INTRO_CAN_EDIT : l)) : INTRO),
     ...(list.length > 0 ? list : [none]),
     ...(off ? ['', off] : []),
     ...(broken ? ['', broken] : []),
@@ -276,7 +348,7 @@ export function chiefPrompt(team: Team, on: Set<string>): string {
     ...checkLines(team, on),
     ...confirmLines(team, on),
     ...CORE_RULES.map(r => annotate(r, team, on)),
-    ...OUTRO,
+    ...(canEdit ? OUTRO.map(l => (l.startsWith('Answer plain questions') ? OUTRO_CAN_EDIT : l)) : OUTRO),
   ].join('\n')
 }
 
@@ -384,56 +456,59 @@ async function protectedPlaces($: EngineInterface): Promise<Protected> {
   } catch {
     // The spelling alone.
   }
-  const configDirs: string[] = []
-  const add = async (get: () => Promise<string | undefined>, suffix: string) => {
+  const get = async (read: () => Promise<string | undefined>) => {
     try {
-      const v = (await get())?.trim()
-      if (v) configDirs.push(`${v.replace(/[\\/]+$/, '')}${suffix}`)
+      return (await read())?.trim() || undefined
     } catch {
-      // Not set or not readable.
+      return undefined
     }
   }
-  await add(() => $.env.get('CLAUDE_CONFIG_DIR'), '')
-  await add(() => $.env.get('HOME'), '/.claude')
-  await add(() => $.env.get('USERPROFILE'), '/.claude')
-  return { roots, configDirs }
+  const home = (await get(() => $.env.get('HOME'))) ?? (await get(() => $.env.get('USERPROFILE')))
+  const config = await get(() => $.env.get('CLAUDE_CONFIG_DIR'))
+  const configDirs = [config, home ? `${home.replace(/[\\/]+$/, '')}/.claude` : undefined]
+    .filter((d): d is string => !!d).map(d => d.replace(/\\/g, '/'))
+  return { roots: roots.map(r => r.replace(/\\/g, '/')), configDirs, home }
 }
 
-/** Where a path lands: its real path, or its folder's plus its name for a file not there yet; the spelling when neither resolves. */
-async function placed($: EngineInterface, path: string): Promise<string[]> {
-  const out = [path]
-  try {
-    const own = await $.fs.stat(path, { resolve: true }).catch(() => undefined)
-    if (own?.realPath) return [...out, own.realPath]
-    const cut = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
-    if (cut <= 0) return out
-    const dir = await $.fs.stat(path.slice(0, cut), { resolve: true }).catch(() => undefined)
-    if (dir?.realPath) out.push(`${dir.realPath}/${path.slice(cut + 1)}`)
-  } catch {
-    // The spelling alone.
+/** The real path of a plain path: its nearest existing ancestor resolved, the rest joined on; undefined when none resolves. */
+async function realOf($: EngineInterface, path: string): Promise<string | undefined> {
+  let at = path
+  let rest = ''
+  for (let i = 0; i < 64; i++) {
+    const stat = await $.fs.stat(at, { resolve: true }).catch(() => undefined)
+    if (stat?.realPath) return normalize(`${stat.realPath.replace(/\\/g, '/').replace(/\/+$/, '')}${rest}`, undefined)
+    if (at === '/' || at === '.' || /^[A-Za-z]:\/?$/.test(at)) return undefined
+    const cut = at.lastIndexOf('/')
+    if (cut < 0) { rest = `/${at}${rest}`; at = '.'; continue }
+    rest = `${at.slice(cut)}${rest}`
+    at = cut === 0 ? '/' : at.slice(0, cut)
   }
-  return out
+  return undefined
 }
 
-/** MCP tools that run commands: their string arguments are checked like a shell command. */
-const MCP_RUNS = /process|exec|shell|command|terminal|bash/i
-/** MCP tools that write, move or remove files: their path arguments are held to the role's write limit. */
-const MCP_WRITES = /(?:^|_)(?:write|edit|move|copy|rename|create|append|replace|patch|delete|remove|upload|save|mkdir|insert|block)(?:_|$)/
-const PATH_FIELDS = ['path', 'paths', 'file_path', 'filepath', 'filePath', 'source', 'destination', 'dest', 'target', 'new_path', 'old_path', 'output_path', 'outputPath', 'directory', 'dir', 'filename']
+/** What may happen to an agent's write to `path`: refused, asked of the person, unresolvable, or nothing. */
+async function pathClassOf($: EngineInterface, path: string, at: Protected): Promise<PathClass | 'unresolved'> {
+  const plain = normalize(path, at.home)
+  if (plain === undefined) return 'unresolved'
+  const real = await realOf($, plain)
+  if (real === undefined) return 'unresolved'
+  const classes = [classify(plain, at), classify(real, at)]
+  return classes.includes('deny') ? 'deny' : classes.includes('ask') ? 'ask' : undefined
+}
 
-/** Every string in a call's fields, nested ones too (bounded). */
-function strings(value: unknown, depth = 0, out: string[] = []): string[] {
+/** Every string in a value, nested ones too (bounded). */
+function strings(value: unknown, depth = 0, out: string[] = [], max = 6): string[] {
   if (typeof value === 'string') out.push(value)
-  else if (depth < 6 && value && typeof value === 'object') for (const v of Object.values(value)) strings(v, depth + 1, out)
+  else if (depth < max && value && typeof value === 'object') for (const v of Object.values(value)) strings(v, depth + 1, out, max)
   return out
-}
-
-/** The path arguments of an MCP file tool. */
-function pathFields(fields: Record<string, unknown>): string[] {
-  return PATH_FIELDS.flatMap(k => strings(fields[k]))
 }
 
 const OWN_FIELDS = new Set(['tool', 'agentId', 'tool_use_id'])
+
+/** Origins of a command run that are the person's own: Enter at the prompt, the Remote Control bridge, their own `claude -p`. */
+const PERSON_ORIGINS = new Set(['composer', 'bridge', 'sdk'])
+const byPerson = (e: { origin?: { kind?: string } }) => PERSON_ORIGINS.has(e.origin?.kind ?? '')
+const NOT_PERSON = 'Only the person can change this setting (typed at the prompt), not a plugin, a schedule or another session.'
 
 /** What /team shows: every department, on or off, and its agents; agent files with problems. */
 export function teamReport(team: Team, on: Set<string>): string {
@@ -507,15 +582,17 @@ export const register: Register = on => {
     // Bot-protection bypass is refused for everyone, always.
     const bypass = bypassLimit(tool, fields)
     if (bypass) return { deny: bypass }
-    if (!isFile && !isSpawn && !isMcp && tool !== 'Bash') return next(e)
+    // Commands: Bash, Monitor, PowerShell (any tool with a string `command`), and an MCP process tool's command fields.
+    const commands = commandsOf(tool, fields)
+    if (!isFile && !isSpawn && !isMcp && commands.length === 0) return next(e)
     const isAgent = e.agentId !== undefined
     if (!isAgent && isFile && (await delegating($))) return { deny: BLOCKED(tool) }
 
-    // Commands: Bash, and every string of an MCP tool that runs processes or shells.
-    const commands = tool === 'Bash' ? [text('command')]
-      : isMcp && MCP_RUNS.test(tool) ? strings(Object.fromEntries(Object.entries(fields).filter(([k]) => !OWN_FIELDS.has(k)))) : []
+    // A command too long to read: the Chief of Staff's is refused; an agent's goes to the person (tool.check).
+    const readable = commands.filter(c => c.length <= MAX_COMMAND)
+    if (!isAgent && readable.length < commands.length) return { deny: TOO_LONG }
     // History rewrites and force pushes: refused for everyone, before anything else is looked up.
-    if (commands.some(rewritesHistory)) return { deny: HISTORY_LIMIT }
+    if (readable.some(rewritesHistory)) return { deny: HISTORY_LIMIT }
 
     const team = await teamOf($)
     if (isSpawn) {
@@ -529,18 +606,30 @@ export const register: Register = on => {
     }
 
     const limits = limitsFor(await typeOf($, e.agentId), team)
-    for (const c of commands) {
+    for (const c of readable) {
       const why = commandLimitWhy(limits, c, team)
       if (why) return { deny: why }
     }
     const paths = isFile ? [text('file_path') || text('notebook_path')]
-      : isMcp && MCP_WRITES.test(toolWords(tool)) ? pathFields(fields) : []
+      : isMcp && mcpWrites(tool) ? pathLike(fields) : []
     if (isAgent) {
       const at = await protectedPlaces($)
       for (const p of paths) {
-        if ((await placed($, p)).some(x => isProtectedPath(x, at))) return { deny: PROTECTED_LIMIT(p) }
+        const c = await pathClassOf($, p, at)
+        if (c === 'unresolved') return { deny: UNRESOLVED_LIMIT(p) }
+        if (c === 'deny') return { deny: PROTECTED_LIMIT(p) }
       }
-      if (commands.some(c => shellWritesTo(c, protectedSpellings(at)))) return { deny: PROTECTED_LIMIT('a protected path in the command') }
+      for (const c of readable) {
+        if (shellProtected(c, at) === 'deny') return { deny: PROTECTED_LIMIT('a protected path in the command') }
+        // Best effort: the write limit on files a command writes (redirects, tee, cp, sed -i, ...).
+        for (const d of destinations(c).dests) {
+          if (!d.content || d.path.dynamic) continue
+          const n = normalize(d.path.text, at.home)
+          if (n === undefined || n.startsWith('/dev/') || !/\.[A-Za-z0-9]+$/.test(n)) continue
+          const why = writeLimitWhy(limits, n)
+          if (why) return { deny: why }
+        }
+      }
     }
     for (const p of paths) {
       const why = writeLimitWhy(limits, p)
@@ -550,7 +639,9 @@ export const register: Register = on => {
   }).catch(($, e, next) => {
     if (next.called) return next(e)
     const t = e.tool
-    return BUILD_TOOLS.includes(t) || SPAWN_TOOLS.includes(t) || t === 'Bash' || t.startsWith('mcp__') ? { deny: GUARD_FAILED(t) } : next(e)
+    const fields = e as unknown as Record<string, unknown>
+    return BUILD_TOOLS.includes(t) || SPAWN_TOOLS.includes(t) || typeof fields.command === 'string' || t.startsWith('mcp__')
+      ? { deny: GUARD_FAILED(t) } : next(e)
   })
 
   // Departments that are off, and agent files with problems, are not offered
@@ -568,20 +659,30 @@ export const register: Register = on => {
     return why ? { deny: why } : next(e)
   }).catch(($, e, next) => (next.called || ownName(e.subagentType) === undefined ? next(e) : { deny: GUARD_FAILED('this spawn') }))
 
-  // The confirm gate. An agent's MCP call that is not clearly read-only, and
-  // its shell commands that run claude, change GitHub or send data out, go
-  // to the person (an ask), or are refused where no person can be asked. The
-  // Chief of Staff is not gated: it asks the person itself. Always on.
+  // The confirm gate. What an agent may do only with the person's OK goes to
+  // the person (an ask), or is refused where no person can be asked: an MCP
+  // call that is not clearly read-only; a command that runs claude, changes
+  // GitHub, publishes, moves main, sends data out, or is too long to check;
+  // a write to a project's CLAUDE.md. The Chief of Staff is not gated: it
+  // asks the person itself. Always on.
   on('tool.check', async ($, e, next) => {
     if (e.agentId === undefined) return next(e)
     const input = (e.input ?? {}) as Record<string, unknown>
     let what: string | undefined
     if (e.tool.startsWith('mcp__')) {
+      const long = commandsOf(e.tool, input).some(c => c.length > MAX_COMMAND)
       const check = checkMcp(e.tool, e.isReadOnly === true, await creditsFree($))
-      if (check.verdict === 'ask') what = `run ${e.tool}, which needs the person's OK: ${check.why}`
-    } else if (e.tool === 'Bash' && typeof input.command === 'string') {
+      if (long) what = `run ${e.tool} with a command over ${MAX_COMMAND / 1024} KB, too long to check`
+      else if (check.verdict === 'ask') what = `run ${e.tool}, which needs the person's OK: ${check.why}`
+    } else if (typeof input.command === 'string') {
       const why = shellNeedsPerson(input.command)
-      if (why) what = `run a shell command that ${why}`
+      if (why) what = `run a ${e.tool} command that ${why}`
+      else if (shellProtected(input.command, await protectedPlaces($)) === 'ask') what = `run a ${e.tool} command that writes a CLAUDE.md memory file`
+    } else if (BUILD_TOOLS.includes(e.tool)) {
+      const p = typeof input.file_path === 'string' ? input.file_path : typeof input.notebook_path === 'string' ? input.notebook_path : ''
+      const at = await protectedPlaces($)
+      const n = normalize(p, at.home)
+      if (n !== undefined && classify(n, at) === 'ask') what = `edit ${p}, a CLAUDE.md memory file every later session reads`
     }
     if (what === undefined) return next(e)
     const verdict = await next(e)
@@ -592,12 +693,16 @@ export const register: Register = on => {
     return e.approver === 'person' ? { decision: 'ask' as const, reason } : { decision: 'deny' as const, reason }
   }).catch(($, e, next) => {
     if (e.agentId === undefined) return next(e)
-    if (e.tool.startsWith('mcp__') || e.tool === 'Bash') return { decision: 'deny' as const, reason: GUARD_FAILED(e.tool) }
+    const input = (e.input ?? {}) as Record<string, unknown>
+    if (e.tool.startsWith('mcp__') || typeof input.command === 'string' || BUILD_TOOLS.includes(e.tool)) {
+      return { decision: 'deny' as const, reason: GUARD_FAILED(e.tool) }
+    }
     return next(e)
   })
 
   on('command.run', { command: 'delegate' }, async ($, e) => {
     const [want = '', arg = ''] = e.args.trim().toLowerCase().split(/\s+/)
+    if (want !== '' && !byPerson(e)) return { text: NOT_PERSON }
     if ((want === 'on' || want === 'off') && arg === '') {
       await $.store.set(STORE_KEY, want === 'on')
       $.ui.status(want === 'on' ? 'Chief of Staff: delegating' : undefined)
@@ -622,22 +727,23 @@ export const register: Register = on => {
   on('command.run', { command: 'team' }, async ($, e) => {
     const team = await teamOf($, true)
     const said = teamCommand(e.args, team, await chosenDepartments(k => $.store.get(k)))
+    if (said.chosen && !byPerson(e)) return { text: NOT_PERSON }
     if (said.chosen) await $.store.set(TEAM_KEY, { ...said.chosen })
     return { text: said.text }
   })
 
   // Only the main session can assign work: it is the one offered the Agent (or older Task) tool.
+  // With /delegate off the team, departments and rules stay; only the no-edit wording goes.
   on('prompt.compose', async ($, e, next) => {
     const composed = await next(e)
     if (!e.tools.some(t => SPAWN_TOOLS.includes(t))) return composed
-    if (!(await delegating($))) return composed
+    const canEdit = !(await delegating($))
     const team = await teamOf($, true)
     return {
       sections: [
         ...composed.sections.filter(s => s.id !== 'chief-of-staff:chief-of-staff'),
-        { id: 'chief-of-staff:chief-of-staff', text: chiefPrompt(team, await enabled($, team)), scope: 'session' as const },
+        { id: 'chief-of-staff:chief-of-staff', text: chiefPrompt(team, await enabled($, team), canEdit), scope: 'session' as const },
       ],
     }
   })
 }
-

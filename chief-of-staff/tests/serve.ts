@@ -8,9 +8,9 @@ type Entry = { kind: 'file' | 'dir' | 'other'; isLink: boolean; size: number }
  * Answers the plugin's `$.fs.list`, `$.fs.read` and `$.fs.stat` from `files`
  * (paths relative to the plugin folder, as in tests/files.ts), since tests
  * run with no file system. `kinds` overrides an entry (a link, a FIFO, a
- * size). Call it before the test's first `$` call.
+ * size); `missing` lists paths `$.fs.stat` cannot find. Call it before the test's first `$` call.
  */
-export function serve(on: On, files: Record<string, string> = FILES, kinds: Record<string, Partial<Entry>> = {}): void {
+export function serve(on: On, files: Record<string, string> = FILES, kinds: Record<string, Partial<Entry>> = {}, missing: string[] = []): void {
   const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '')
   const key = (path: string) => Object.keys(files).find(k => norm(path).endsWith(`/${k}`))
   const entry = (k: string): Entry => ({ kind: 'file', isLink: false, size: (files[k] ?? '').length, ...kinds[k] })
@@ -30,9 +30,11 @@ export function serve(on: On, files: Record<string, string> = FILES, kinds: Reco
     if (folder === undefined) out.push(...folders.filter(f => !f.includes('/')).map(f => ({ name: f, kind: 'dir' as const, isLink: false, size: 0, mtimeMs: 0 })))
     return { value: out }
   })
+  // Any other path stands for a folder that exists (so a write path resolves), unless `missing` lists it.
   on('fs.stat', (_, e) => {
     const k = key(e.path)
-    if (k === undefined) throw new Error(`ENOENT: ${e.path}`)
-    return { value: { ...entry(k), mtimeMs: 0, realPath: e.path } }
+    if (k !== undefined) return { value: { ...entry(k), mtimeMs: 0, realPath: e.path } }
+    if (missing.some(m => norm(e.path) === m || norm(e.path).startsWith(`${m}/`))) throw new Error(`ENOENT: ${e.path}`)
+    return { value: { kind: 'dir' as const, isLink: false, size: 0, mtimeMs: 0, realPath: e.path } }
   })
 }

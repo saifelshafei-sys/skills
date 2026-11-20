@@ -41,14 +41,18 @@ test('/delegate off turns it off', async ($, on) => {
 
   const before = await $.prompt.compose(IN(['Agent']))
   expect(before.sections.some(s => s.id === 'chief-of-staff:chief-of-staff')).toBe(true)
-  const said = await $.command.run({ command: 'delegate', args: 'off' } as never)
+  const said = await $.command.run({ origin: { kind: 'composer' }, command: 'delegate', args: 'off' } as never)
   expect(JSON.stringify(said).includes('is off')).toBe(true)
-  const out = await $.prompt.compose(IN(['Agent']))
-  expect(out.sections.some(s => s.id === 'chief-of-staff:chief-of-staff')).toBe(false)
+  // 0.10: the team prompt stays; only the no-edit wording goes
+  const out = (await $.prompt.compose(IN(['Agent']))).sections.find(s => s.id === 'chief-of-staff:chief-of-staff')?.text ?? ''
+  expect(out.includes('are blocked for you')).toBe(false)
+  expect(out.includes('turned delegation off')).toBe(true)
+  expect(out.includes('Routing rules')).toBe(true)
 })
 
 test('the Chief of Staff cannot edit files; an agent can', async ($, on) => {
   // 0.10: an agent whose type cannot be told gets the tightest limits, so the agent is named here.
+  serve(on)
   on('agent.list', () => ({ value: [{ id: 'a1', type: 'general-purpose', description: '', status: 'running' } as never] }))
   on('tool.call', () => ({ result: {} }))
   const chief = await $.tool.call({ tool: 'Edit', file_path: '/a.ts', old_string: 'a', new_string: 'b' } as never)
@@ -73,7 +77,7 @@ test('/delegate off lets the Chief of Staff edit again', async ($, on) => {
   on('command.register', () => ({ value: { command: 'delegate' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  await $.command.run({ command: 'delegate', args: 'off' } as never)
+  await $.command.run({ origin: { kind: 'composer' }, command: 'delegate', args: 'off' } as never)
   const chief = await $.tool.call({ tool: 'Write', file_path: '/a.ts', content: 'x' } as never)
   expect((chief as { deny?: string }).deny).toBeUndefined()
 })

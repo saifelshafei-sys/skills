@@ -20,9 +20,25 @@
 
 /** Verbs that only read. */
 export const READ_VERBS = new Set([
-  'get', 'list', 'search', 'read', 'find', 'fetch', 'query', 'describe', 'show', 'view', 'count', 'lookup',
-  'inspect', 'estimate', 'suggest', 'browse', 'explore', 'download', 'resolve', 'check', 'scan', 'summarize', 'display',
-  'extract', 'screenshot',
+  'get', 'list', 'search', 'read', 'find', 'fetch', 'describe', 'show', 'view', 'count', 'lookup', 'retrieve',
+  'inspect', 'estimate', 'browse', 'explore', 'summarize', 'display', 'screenshot',
+])
+
+/**
+ * Words that act. The engine's read-only word is not trusted for a name that
+ * holds one, and a server prefix that is one is kept (`mcp__send__send_get_users`).
+ */
+export const ACTION_WORDS = new Set([
+  'create', 'update', 'set', 'share', 'write', 'make', 'delete', 'send', 'post', 'put', 'add', 'remove', 'edit', 'modify', 'move',
+  'copy', 'upload', 'publish', 'deploy', 'start', 'stop', 'run', 'exec', 'execute', 'invoke', 'invite', 'pay', 'transfer', 'merge',
+  'push', 'commit', 'submit', 'approve', 'cancel', 'archive', 'rename', 'insert', 'replace', 'reply', 'forward', 'schedule',
+  'unschedule', 'like', 'react', 'comment', 'trash', 'purge', 'destroy', 'drop', 'reset', 'resolve', 'close', 'open', 'mark',
+  'label', 'assign', 'enable', 'disable', 'install', 'uninstall', 'connect', 'disconnect', 'refund', 'charge', 'order', 'buy',
+  'purchase', 'rent', 'book', 'save', 'import', 'export', 'download', 'convert', 'generate', 'apply', 'grant', 'revoke',
+  'block', 'unblock', 'follow', 'unfollow', 'subscribe', 'unsubscribe', 'register', 'login', 'logout', 'sync', 'restore',
+  'clear', 'kill', 'terminate', 'confirm', 'accept', 'decline', 'respond', 'rsvp', 'tweet', 'retweet', 'upvote', 'clone',
+  'fork', 'revert', 'rollback', 'release', 'finalize', 'void', 'issue', 'patch', 'append', 'mutate', 'query', 'check', 'scan',
+  'suggest', 'extract', 'unzip', 'interact', 'eval', 'batch', 'bulk', 'do',
 ])
 
 /**
@@ -96,7 +112,7 @@ export function toolWords(tool: string): string {
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
     .toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
-  if (words.length > 1 && server.includes(words[0] ?? '')) words.shift()
+  if (words.length > 1 && server.includes(words[0] ?? '') && !ACTION_WORDS.has(words[0] ?? '') && !HIGH_RISK.includes(words[0] ?? '')) words.shift()
   return words.join('_')
 }
 
@@ -136,8 +152,23 @@ export type McpCheck = { verdict: McpVerdict; why: string }
  * is the engine's word on the tool (true only); `creditsFree` the person's
  * `/delegate credits` choice (free unless they set ask).
  */
+/** Tools of a named server that only read, or do no more than open and close the server's own sessions: they pass. */
+export const SERVER_READS: Record<string, RegExp> = {
+  scrapling: /^(?:make_request|open_request_session|session_make_request|browser_open|browser_close|browser_fetch|browser_fetch_once|browser_extract|browser_screenshot|browser_network_requests?|close_session|list_sessions|bulk_get|bulk_fetch|stealthy_fetch|bulk_stealthy_fetch)$/,
+}
+
+/** The server part of an MCP tool's name, lower case (`mcp__plugin_x_scrapling__make_request` is `plugin_x_scrapling`). */
+export function serverOf(tool: string): string {
+  return tool.startsWith('mcp__') ? (tool.slice(5).split('__')[0] ?? '').toLowerCase() : ''
+}
+
 export function checkMcp(tool: string, isReadOnly = false, creditsFree = true): McpCheck {
+  if (tool.length > 256) return { verdict: 'ask', why: 'its name is too long to check' }
   const words = toolWords(tool)
+  const server = serverOf(tool)
+  for (const [name, re] of Object.entries(SERVER_READS)) {
+    if (server.split(/[^a-z0-9]+/).includes(name) && re.test(words)) return { verdict: 'pass', why: `a ${name} tool that only reads` }
+  }
   const list = words.split('_').filter(Boolean)
   if (words === '') return { verdict: 'ask', why: 'its name says nothing' }
   if (META.test(words)) return { verdict: 'ask', why: 'it runs other tools, code or commands' }

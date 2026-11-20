@@ -194,34 +194,34 @@ test('/team shows the departments; /team on, off and reset change them from the 
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
 
-  const shown = JSON.stringify(await $.command.run({ command: 'team', args: '' } as never))
+  const shown = JSON.stringify(await $.command.run({ origin: { kind: 'composer' }, command: 'team', args: '' } as never))
   expect(shown).toContain('Product & Engineering (product-engineering): on. reverse-engineer, frontend-developer, backend-developer, qa-tester, devops-engineer')
   expect(shown).toContain('Sales (sales): off. No agents yet.')
   expect(shown).toContain('Social (social): on. No agents yet.')
 
-  const off = JSON.stringify(await $.command.run({ command: 'team', args: 'off creative' } as never))
+  const off = JSON.stringify(await $.command.run({ origin: { kind: 'composer' }, command: 'team', args: 'off creative' } as never))
   expect(off).toContain('Creative: off. It applies from your next message.')
   expect(kept.get('departments')).toEqual({ creative: false })
   expect((await promptOf($)).includes('chief-of-staff:web-designer')).toBe(false)
 
-  await $.command.run({ command: 'team', args: 'on creative' } as never)
+  await $.command.run({ origin: { kind: 'composer' }, command: 'team', args: 'on creative' } as never)
   expect((await promptOf($)).includes('chief-of-staff:web-designer')).toBe(true)
 
-  await $.command.run({ command: 'team', args: 'off all' } as never)
+  await $.command.run({ origin: { kind: 'composer' }, command: 'team', args: 'off all' } as never)
   const none = await promptOf($)
   expect(none.includes('- chief-of-staff:')).toBe(false)
   expect(none.includes('no department with assignable agents is on')).toBe(true)
   expect(none.includes('Product & Engineering (turn on with /team on product-engineering)')).toBe(true)
-  await $.command.run({ command: 'team', args: 'on all' } as never)
+  await $.command.run({ origin: { kind: 'composer' }, command: 'team', args: 'on all' } as never)
   expect((await promptOf($)).includes('Departments that are off')).toBe(false)
 
-  await $.command.run({ command: 'team', args: 'reset' } as never)
+  await $.command.run({ origin: { kind: 'composer' }, command: 'team', args: 'reset' } as never)
   expect(kept.get('departments')).toEqual({})
   expect((await promptOf($)).includes('Sales (turn on with /team on sales)')).toBe(true)
 
-  const bad = JSON.stringify(await $.command.run({ command: 'team', args: 'on marketing' } as never))
+  const bad = JSON.stringify(await $.command.run({ origin: { kind: 'composer' }, command: 'team', args: 'on marketing' } as never))
   expect(bad).toContain('Unknown department: marketing')
-  expect(JSON.stringify(await $.command.run({ command: 'team', args: 'sideways' } as never))).toContain('Use /team')
+  expect(JSON.stringify(await $.command.run({ origin: { kind: 'composer' }, command: 'team', args: 'sideways' } as never))).toContain('Use /team')
 })
 
 test('teamCommand on its own: lists, commas, dedupe, all, unknown, reset', () => {
@@ -351,7 +351,7 @@ test('an agent file with a bad or missing department cannot be assigned and is l
   expect(text.includes('- chief-of-staff:copywriter:')).toBe(false)
   expect(text).toContain('- chief-of-staff:fresh: A new role') // no does: the description's first sentence
   expect(text).toContain('Agent files with problems')
-  const shown = JSON.stringify(await $.command.run({ command: 'team', args: '' } as never))
+  const shown = JSON.stringify(await $.command.run({ origin: { kind: 'composer' }, command: 'team', args: '' } as never))
   expect(shown).toContain('No department (cannot be assigned until their files name one): copywriter, qa-tester')
   expect(shown).toContain('qa-tester.md: unknown department \\"quality\\"')
   expect(shown).toContain('copywriter.md: no department')
@@ -386,7 +386,7 @@ test('only regular agent files of up to 64 KiB are read', async ($, on) => {
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('tool.call', () => ({ result: {} }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  const shown = JSON.stringify(await $.command.run({ command: 'team', args: '' } as never))
+  const shown = JSON.stringify(await $.command.run({ origin: { kind: 'composer' }, command: 'team', args: '' } as never))
   expect(shown).toContain('agents/huge.md is over 64 KiB; skipped')
   expect(shown).toContain('agents/frontend-developer.md is not a regular file; skipped')
   expect(shown).toContain('agents/qa-tester.md is not a regular file; skipped')
