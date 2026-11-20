@@ -15,6 +15,11 @@
       "description": "Chief of Staff that delegates to a team of twelve named agents, with role limits"
     },
     {
+      "name": "graphify",
+      "source": "./graphify",
+      "description": "Vendored graphify skill (Graphify-Labs/graphify): turn code, docs and papers into a queryable knowledge graph; needs the graphifyy CLI"
+    },
+    {
       "name": "web-craft",
       "source": "./web-craft",
       "description": "Award-level website skills: /awwwards to build, /jury to score a site, /teardown for interactive 3D explainers"
