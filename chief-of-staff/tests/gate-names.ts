@@ -26,6 +26,8 @@ export const MUST_GATE = [
 
 /** QA's "must pass" that still pass under the allow-list: reads, drafts, and generation (credits free). */
 export const MUST_PASS = [
+  // passed again by the round-3 allow-list additions (Gmail labels, Higgsfield and Canva read tools)
+  'mcp__Gmail__untrash_message', 'mcp__Gmail__label_message', 'mcp__Higgsfield__tiktok_publish_status', 'mcp__Higgsfield__gpu_job_quote', 'mcp__Higgsfield__gpu_job_status', 'mcp__Canva__request-outline-review', 'mcp__Canva__export-design',
   'mcp__Gmail__search_threads', 'mcp__Gmail__get_message', 'mcp__Gmail__list_drafts', 'mcp__Gmail__create_draft',
   'mcp__Gmail__update_draft', 'mcp__Gmail__get_thread', 'mcp__Slack__slack_send_message_draft', 'mcp__Slack__slack_read_channel',
   'mcp__Slack__slack_read_thread', 'mcp__Slack__slack_search_public', 'mcp__Slack__slack_get_reactions', 'mcp__Taplio__create_draft',
@@ -47,15 +49,17 @@ export const MUST_PASS = [
  */
 export const NOW_ASK = [
   'mcp__Google_Calendar__suggest_time',
-  'mcp__Gmail__untrash_message', 'mcp__Gmail__label_message', 'mcp__Taplio__cancel_like', 'mcp__Taplio__unschedule',
-  'mcp__Taplio__cancel_comment_draft', 'mcp__Higgsfield__tiktok_publish_status', 'mcp__Higgsfield__tiktok_prepare_publish',
-  'mcp__Higgsfield__gpu_job_quote', 'mcp__Higgsfield__gpu_job_status', 'mcp__Higgsfield__save_project_publication_preview',
-  'mcp__Higgsfield__cancel_project_publication_review', 'mcp__Canva__request-outline-review', 'mcp__Canva__export-design',
+  'mcp__Taplio__cancel_like', 'mcp__Taplio__unschedule',
+  'mcp__Taplio__cancel_comment_draft', 'mcp__Higgsfield__tiktok_prepare_publish',
+  'mcp__Higgsfield__save_project_publication_preview',
+  'mcp__Higgsfield__cancel_project_publication_review', 
   'mcp__plugin_browser-use_browser-use__browser_exec',
 ]
 
 /** Real tools from QA's bug 2 and the security review: all ask but drafts and generation. */
 export const REAL_ASK = [
+  // round 3: credits-free covers generate_<media> and named media tools only
+  'mcp__Higgsfield__ai_influencer_generate',
   'mcp__Higgsfield__deploy_website', 'mcp__Google_Calendar__create_event', 'mcp__Google_Calendar__update_event',
   'mcp__Higgsfield__share_project', 'mcp__Higgsfield__update_project_sharing', 'mcp__Higgsfield__gpu_rent',
   'mcp__Higgsfield__gpu_job_start', 'mcp__Higgsfield__meta_ads_write', 'mcp__Higgsfield__participate_in_contest',
@@ -77,7 +81,7 @@ export const REAL_ASK = [
 ]
 export const REAL_PASS = [
   'mcp__Gmail__create_draft', 'mcp__Slack__slack_send_message_draft', 'mcp__Taplio__create_post_draft', 'mcp__Taplio__update_draft',
-  'mcp__Higgsfield__generate_image', 'mcp__Higgsfield__generate_video', 'mcp__Higgsfield__ai_influencer_generate',
+  'mcp__Higgsfield__generate_image', 'mcp__Higgsfield__generate_video',
   'mcp__Higgsfield__create_voice',
 ]
 

@@ -73,8 +73,10 @@ export type Agent = {
   department: string
   /** The one line the Chief of Staff reads about the role. */
   does: string
-  /** As the file states it; register.ts tightens it with the FLOOR. */
+  /** As the file states it ('none' when it states none); register.ts tightens it with the FLOOR. */
   writeLimit: WriteLimit
+  /** The file states a write-limit. A role not in the FLOOR that states none writes only .md. */
+  declaresWriteLimit: boolean
   /** The file says `can-deploy: true`. Honoured only for a role the FLOOR lets deploy. */
   canDeploy: boolean
   /** Roles that check this role's output before it is called done. */
@@ -121,7 +123,16 @@ export function readFrontmatter(text: string): { fields: Record<string, string>;
   const end = lines.findIndex((l, i) => i > 0 && l.trimEnd() === '---')
   if (end < 0) return { fields, repeated, hasBlock: false }
   let listKey: string | undefined
+  let block: { key: string; folded: boolean; lines: string[] } | undefined
+  const endBlock = () => {
+    if (!block) return
+    const text = block.folded ? block.lines.map(l => l.trim()).join(' ').replace(/\s+/g, ' ') : block.lines.map(l => l.trim()).join('\n')
+    fields[block.key] = text.trim()
+    block = undefined
+  }
   for (const raw of lines.slice(1, end)) {
+    if (block && (raw.trim() === '' || /^\s/.test(raw))) { if (raw.trim() !== '') block.lines.push(raw); continue }
+    endBlock()
     if (raw.trim() === '' || raw.trimStart().startsWith('#')) continue
     const item = /^\s*-\s+(.*)$/.exec(raw)
     if (item && listKey !== undefined) {
@@ -136,10 +147,12 @@ export function readFrontmatter(text: string): { fields: Record<string, string>;
     const value = raw.slice(colon + 1).trim()
     if (key in fields) { repeated.push(key); continue }
     if (value === '') { fields[key] = ''; listKey = key; continue }
+    if (/^[>|][+-]?$/.test(value)) { block = { key, folded: value.startsWith('>'), lines: [] }; continue }
     fields[key] = value.startsWith('[') && value.endsWith(']')
       ? value.slice(1, -1).split(',').map(s => unquote(s.trim())).filter(Boolean).join(', ')
       : unquote(value)
   }
+  endBlock()
   return { fields, repeated, hasBlock: true }
 }
 
@@ -219,9 +232,11 @@ export function parseAgent(file: string, text: string, departments: Department[]
   if (!departments.some(d => d.id === department)) {
     own.push(`${file}: ${department ? `unknown department "${department}"` : 'no department'}`)
   }
+  const declaresWriteLimit = fm['write-limit'] !== undefined
   const rawLimit = (fm['write-limit'] ?? 'none').trim().toLowerCase()
   const limit = WRITE_LIMITS.find(l => l === rawLimit)
   if (!limit) own.push(`${file}: unknown write-limit "${fm['write-limit']}"`)
+  if ((fm.does ?? '').trim() === '' && (fm.description ?? '').trim() === '') own.push(`${file}: no does and no description`)
   const rawDeploy = (fm['can-deploy'] ?? 'false').trim().toLowerCase()
   if (rawDeploy !== 'true' && rawDeploy !== 'false') own.push(`${file}: can-deploy must be true or false, not "${fm['can-deploy']}"`)
   const rawOrder = (fm.order ?? '').trim()
@@ -233,6 +248,7 @@ export function parseAgent(file: string, text: string, departments: Department[]
     department: departments.some(d => d.id === department) ? department : '',
     does: (fm.does ?? '').trim().slice(0, 300) || firstSentence(fm.description ?? '') || name,
     writeLimit: own.length > 0 ? 'md-only' : (limit ?? 'md-only'),
+    declaresWriteLimit,
     canDeploy: own.length === 0 && rawDeploy === 'true',
     checkedBy: listOf(fm['checked-by']).map(s => s.toLowerCase()),
     confirm: listOf(fm.confirm),

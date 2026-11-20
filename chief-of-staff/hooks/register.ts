@@ -111,7 +111,8 @@ export function limitsFor(type: string | undefined, team: Team): Limits {
   if (!agent || !isClean(agent)) return { role: own, writeLimit: 'md-only', canDeploy: false, hint: '', isBroken: true }
   return {
     role: own,
-    writeLimit: strictest(floor?.writeLimit ?? 'none', agent.writeLimit),
+    // A role not in the FLOOR that states no write-limit writes only .md (fail closed).
+    writeLimit: strictest(floor?.writeLimit ?? 'none', agent.declaresWriteLimit ? agent.writeLimit : floor ? 'none' : 'md-only'),
     canDeploy: floor?.canDeploy === true && agent.canDeploy,
     hint: agent.limitHint,
     isBroken: false,

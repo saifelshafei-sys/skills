@@ -60,13 +60,23 @@ test('confirm gate: allow-list rules', () => {
 })
 
 const GENERATES = ['mcp__Higgsfield__generate_image', 'mcp__Higgsfield__generate_video', 'mcp__Higgsfield__generate_audio', 'mcp__Higgsfield__generate_3d',
-  'mcp__Higgsfield__generate_image_batch', 'mcp__Higgsfield__ai_influencer_generate', 'mcp__Higgsfield__ads_studio_generate', 'mcp__Higgsfield__create_voice',
-  'mcp__Higgsfield__upscale_image', 'mcp__Higgsfield__upscale_video', 'mcp__Higgsfield__remove_background', 'mcp__Canva__create-design',
-  'mcp__Canva__generate-design', 'mcp__Canva__generate-image', 'mcp__Canva__remove-background', 'mcp__ElevenLabs__text_to_speech']
+  'mcp__Higgsfield__generate_image_batch', 'mcp__Higgsfield__create_voice', 'mcp__Higgsfield__create_voice_from_confirmed_audio',
+  'mcp__Higgsfield__upscale_image', 'mcp__Higgsfield__upscale_video', 'mcp__Higgsfield__remove_background', 'mcp__Higgsfield__outpaint_image',
+  'mcp__Higgsfield__reframe', 'mcp__Higgsfield__voice_change', 'mcp__Higgsfield__separate_stems', 'mcp__Higgsfield__separate_image_layers',
+  'mcp__Higgsfield__motion_control', 'mcp__Higgsfield__scene_builder_3d_generate_angles', 'mcp__Higgsfield__scene_builder_3d_generate_video',
+  'mcp__Higgsfield__build_ai_influencer', 'mcp__Canva__create-design', 'mcp__Canva__create-video', 'mcp__Canva__create-design-from-brand-template',
+  'mcp__Canva__create-design-from-candidate', 'mcp__Canva__resize-design', 'mcp__Canva__generate-design', 'mcp__Canva__generate-design-structured',
+  'mcp__Canva__generate-image', 'mcp__Canva__remove-background', 'mcp__x__generate_music', 'mcp__x__thumbnail_generate', 'mcp__x__generate_sound_effect']
 const SPENDS_OR_SHARES = ['mcp__Higgsfield__gpu_rent', 'mcp__Higgsfield__gpu_job_start', 'mcp__Higgsfield__gpu_rental_exec', 'mcp__Higgsfield__gpu_rental_generate',
   'mcp__Higgsfield__gpu_generate', 'mcp__Higgsfield__publish_website', 'mcp__Higgsfield__share_project', 'mcp__Higgsfield__deploy_website',
   'mcp__Higgsfield__send_feedback', 'mcp__Higgsfield__meta_ads_write', 'mcp__Higgsfield__participate_in_contest', 'mcp__Higgsfield__tiktok_connect',
-  'mcp__Higgsfield__meta_ads_connect', 'mcp__Higgsfield__website_secrets', 'mcp__Higgsfield__website_db', 'mcp__x__buy_credits', 'mcp__x__generate_and_publish']
+  'mcp__Higgsfield__meta_ads_connect', 'mcp__Higgsfield__website_secrets', 'mcp__Higgsfield__website_db', 'mcp__x__buy_credits', 'mcp__x__generate_and_publish',
+  // round 3: only generate_<media>, <media>_generate and the named media tools are free
+  'mcp__Higgsfield__ai_influencer_generate', 'mcp__Higgsfield__ads_studio_generate', 'mcp__ElevenLabs__text_to_speech', 'mcp__stripe__generate_invoice',
+  'mcp__stripe__generate_payment_link', 'mcp__x__generate_api_key', 'mcp__x__generate_token', 'mcp__x__generate_and_email_report', 'mcp__x__generate_sms',
+  'mcp__x__generate_pr', 'mcp__x__generate_commit', 'mcp__x__generate_release', 'mcp__x__generate_invite_link', 'mcp__x__generate_tweet', 'mcp__x__email_generate',
+  'mcp__x__campaign_generate', 'mcp__x__upscale_and_email', 'mcp__x__generate_and_share', 'mcp__x__create_design_and_publish', 'mcp__x__generate_and_upload',
+  'mcp__x__generate_and_save_to_drive', 'mcp__x__scene_builder_3d_generate_and_publish', 'mcp__x__create_design_from_x_and_send']
 
 test('generation credits: free by default, ask when the person says so; spending, sharing and publishing always ask', () => {
   for (const t of GENERATES) {

@@ -38,7 +38,7 @@ export const ACTION_WORDS = new Set([
   'block', 'unblock', 'follow', 'unfollow', 'subscribe', 'unsubscribe', 'register', 'login', 'logout', 'sync', 'restore',
   'clear', 'kill', 'terminate', 'confirm', 'accept', 'decline', 'respond', 'rsvp', 'tweet', 'retweet', 'upvote', 'clone',
   'fork', 'revert', 'rollback', 'release', 'finalize', 'void', 'issue', 'patch', 'append', 'mutate', 'query', 'check', 'scan',
-  'suggest', 'extract', 'unzip', 'interact', 'eval', 'batch', 'bulk', 'do',
+  'suggest', 'extract', 'unzip', 'interact', 'eval', 'do',
 ])
 
 /**
@@ -81,7 +81,7 @@ export const NOUNS = new Set([
   'size', 'sizes', 'preview', 'previews', 'public', 'private', 'all', 'my', 'recent', 'latest', 'new', 'more', 'next',
   'user', 'raw', 'full', 'by', 'to', 'for', 'of', 'in', 'from', 'with', 'per', 'about', 'on', 'spam', 'sensitive',
   'unread', 'starred', 'archived', 'shared', 'available', 'current', 'default', 'top', 'related', 'similar',
-  'browser', 'network', 'once', 'web', 'html', 'markdown', 'screenshots',
+  'browser', 'network', 'once', 'web', 'html', 'markdown', 'screenshots', 'commits', 'contents', 'library', 'build', 'builds', 'documents',
 ])
 
 /** Verbs that are never read words, wherever they stand (also matched inside unsplit names). */
@@ -90,13 +90,22 @@ export const HIGH_RISK = ['send', 'post', 'pay', 'publish', 'deploy', 'delete', 
 /** Tools that run other tools, code, commands or processes: always ask. */
 export const META = /(?:^|_)(?:multi_execute|proxy_execute|execute|exec|invoke|eval|shell|terminal|bash|command|commands|script|scripts|python|sandbox|interact|process|start_process|run_python|run_code|run_command|apps_invoke)(?:_|$)/
 
-/** Draft work that does no more than write a draft. */
-export const DRAFT_ONLY = /^(?:(?:create|update)_(?:(?:email|comment|post|message|reply|connection_request)_)?draft|send_message_draft)$/
+/** Draft work that does no more than write a draft. Slack's `send_message_draft` counts only on the Slack server. */
+export const DRAFT_ONLY = /^(?:create|update)_(?:(?:email|comment|post|message|reply|connection_request)_)?draft$/
+export const SLACK_DRAFT = 'send_message_draft'
 
-/** Media generation (spends generation credits): free unless the person set `/delegate credits ask`. */
-export const GENERATES = /^(?:generate(?:_[a-z0-9]+)*|[a-z0-9]+(?:_[a-z0-9]+)*_generate|upscale_[a-z0-9_]+|create_voice|remove_background|create_design|text_to_speech|speech_to_speech|text_to_sound_effects?|text_to_voice|voice_design)$/
+/** What generation tools make: credits-free covers these and nothing else. */
+export const MEDIA = '(?:image|images|video|audio|voice|speech|music|sound|sound_effect|design|3d|avatar|thumbnail)'
+/** `generate_<media>` and `<media>_generate`, nothing more (`_batch` aside). */
+export const GENERATES = new RegExp(`^(?:generate_${MEDIA}(?:_batch)?|${MEDIA}_generate)$`)
+/** Media tools named one by one: free with generation credits. */
+export const FREE_MEDIA = new RegExp(`^(?:upscale_${MEDIA}|outpaint_image|reframe|remove_background|voice_change|separate_stems|separate_image_layers|` +
+  'motion_control|scene_builder_3d_generate_[a-z0-9_]+|build_ai_influencer|create_voice|create_voice_from_confirmed_audio|create_design|create_video|' +
+  'create_design_from_[a-z0-9_]+|resize_design|generate_design(?:_[a-z0-9_]+)?|generate_image)$')
+/** The verbs a media tool's name may hold; any other action word in it keeps it asking (`generate_and_email_report`). */
+const MEDIA_VERBS = new Set(['generate', 'create', 'upscale', 'outpaint', 'reframe', 'remove', 'build', 'separate', 'resize', 'change', 'control'])
 /** Words that keep a generation tool asking anyway: renting hardware, buying, sharing, publishing. */
-const NOT_JUST_GENERATION = /(?:^|_)(?:gpu|rent|rental|buy|purchase|credits?|billing|checkout|share|publish|deploy|send|post|upload|website|contest|connect|secret|secrets|db|exec|batch_send)(?:_|$)/
+const NOT_JUST_GENERATION = /(?:^|_)(?:gpu|rent|rental|buy|purchase|credits?|billing|checkout|share|publish|deploy|send|post|upload|website|contest|connect|secret|secrets|db|exec|email|mail|invoice|key|token|link|tweet|sms|pr|commit|release|order|notify|save|overwrite)(?:_|$)/
 
 /**
  * An MCP tool's own name (after `mcp__<server>__`) as lower-case words joined
@@ -116,9 +125,13 @@ export function toolWords(tool: string): string {
   return words.join('_')
 }
 
+/** Past-tense and noun forms of action verbs are not actions: `deleted`, `published`, `sender`, `payload`, `merged`, `pushed`. */
+export const PAST_FORMS = /^(?:send|post|pay|publish|deploy|delete|transfer|refund|charge|merge|push|share|create|update|archive|trash|schedule|like)(?:ed|d|er|ers)$|^payloads?$/
+const isNoun = (w: string) => NOUNS.has(w) || PAST_FORMS.test(w)
+
 /** Whether a word (not known as a read word or noun) hides a high-risk verb: `sendmessage`, `smssend`. */
 function hidesRisk(word: string): boolean {
-  return !READ_VERBS.has(word) && !NOUNS.has(word) && !HIGH_RISK.includes(word) && HIGH_RISK.some(v => word.includes(v))
+  return !READ_VERBS.has(word) && !isNoun(word) && !HIGH_RISK.includes(word) && HIGH_RISK.some(v => word.includes(v))
 }
 
 /**
@@ -141,7 +154,7 @@ export function isReadName(words: string[]): boolean {
   if (words.length === 0) return false
   const first = words[0] ?? ''
   if (HIGH_RISK.includes(first) || (LEADING_ACTIONS.has(first) && !READ_VERBS.has(first))) return false
-  return words.some(w => READ_VERBS.has(w)) && words.every(w => NOUNS.has(w) || READ_VERBS.has(w))
+  return words.some(w => READ_VERBS.has(w)) && words.every(w => isNoun(w) || READ_VERBS.has(w))
 }
 
 export type McpVerdict = 'pass' | 'ask'
@@ -152,34 +165,72 @@ export type McpCheck = { verdict: McpVerdict; why: string }
  * is the engine's word on the tool (true only); `creditsFree` the person's
  * `/delegate credits` choice (free unless they set ask).
  */
-/** Tools of a named server that only read, or do no more than open and close the server's own sessions: they pass. */
+/**
+ * Tools of a named server that only read, or do no more than open and
+ * close the server's own sessions or wait on its own jobs: they pass. The
+ * key is a word of the server's name (`plugin_x_scrapling` has `scrapling`).
+ */
 export const SERVER_READS: Record<string, RegExp> = {
   scrapling: /^(?:make_request|open_request_session|session_make_request|browser_open|browser_close|browser_fetch|browser_fetch_once|browser_extract|browser_screenshot|browser_network_requests?|close_session|list_sessions|bulk_get|bulk_fetch|stealthy_fetch|bulk_stealthy_fetch)$/,
+  gmail: /^(?:label_[a-z0-9_]+|unlabel_[a-z0-9_]+|untrash_[a-z0-9_]+|unmark_[a-z0-9_]+_spam|download_gmail_attachment)$/,
+  taplio: /^pick_media$/,
+  higgsfield: new RegExp('^(?:balance|transactions|show_[a-z0-9_]+|get_[a-z0-9_]+|list_[a-z0-9_]+|apps_describe|apps_search|gpu_explore|gpu_list_[a-z0-9_]+|gpu_my|' +
+    'gpu_private_models|gpu_job_quote|gpu_job_status|gpu_rental|gpu_rental_logs|meta_ads_read|meta_ads_tools|tiktok_accounts|tiktok_music_trending|' +
+    'tiktok_publish_status|video_analysis_jobs|video_analysis_status|virality_predictor|website_status|ads_studio_get_[a-z0-9_]+|ads_studio_list_[a-z0-9_]+|' +
+    'ads_studio_quote|ads_studio_story_presets|ads_studio_story_recipe|ai_influencer_get_[a-z0-9_]+|ai_influencer_list_presets|ai_influencer_prepare|' +
+    'resolve_explainer_preset|scene_builder_3d_get_[a-z0-9_]+|scene_builder_3d_list_[a-z0-9_]+|scene_builder_3d_search_assets|scene_builder_3d_show_scene|' +
+    'jobs_wait|job_display|get_preset_instructions|get_workflow_instructions|get_workflow_bundle_file)$'),
+  canva: /^(?:export_design|get_export_formats|get_[a-z0-9_]+_job|get_[a-z0-9_]+_status|get_video_production_guide|help|resolve_shortlink|request_outline_review)$/,
+  '21st': /^(?:get_[a-z0-9_]+|list_[a-z0-9_]+|search(?:_[a-z0-9_]+)?|video_export_status|video_get_doc|video_list_blocks|video_search_blocks|video_snapshot)$/,
+  '99tests': /^(?:get_report|get_sample_report|list_packages)$/,
+  booking: /^answer_property_qa_by_ids_v2$/,
+  changethisfile: /^list_conversions$/,
+  claude_docs: /^guide$/,
+  composio: /^(?:get_tool_schemas|search_tools|search_skills|wait_for_connections)$/,
+  slack: /^search_[a-z0-9_]+$/,
+  plugin_authoring: /^scan_secrets$/,
+  desktop_commander: /^(?:read_multiple_files|read_process_output|get_recent_tool_calls|list_searches|start_search|stop_search|get_more_search_results)$/,
 }
 
-/** The server part of an MCP tool's name, lower case (`mcp__plugin_x_scrapling__make_request` is `plugin_x_scrapling`). */
+/** Read tools with common names on any server. */
+export const COMMON_READS = /^(?:get_file_contents|list_commits|search_code|browser_snapshot|browser_take_screenshot|retrieve_[a-z0-9_]+|get_library_docs|get_deployment_build_logs)$/
+
+/** The server part of an MCP tool's name, lower case, words joined by `_` (`mcp__plugin_x_desktop-commander__a` is `plugin_x_desktop_commander`). */
 export function serverOf(tool: string): string {
-  return tool.startsWith('mcp__') ? (tool.slice(5).split('__')[0] ?? '').toLowerCase() : ''
+  return tool.startsWith('mcp__') ? (tool.slice(5).split('__')[0] ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '_') : ''
 }
 
+/** Whether a word is one an action holds (and not only a noun or a past form of one). */
+const acts = (w: string) => (ACTION_WORDS.has(w) || HIGH_RISK.includes(w)) && !PAST_FORMS.test(w)
+
+/**
+ * Whether an agent's MCP call may run without the person's OK. `isReadOnly`
+ * is the engine's word on the tool (true only), not trusted when the name
+ * holds an action word; `creditsFree` the person's `/delegate credits`
+ * choice (free unless they set ask).
+ */
 export function checkMcp(tool: string, isReadOnly = false, creditsFree = true): McpCheck {
   if (tool.length > 256) return { verdict: 'ask', why: 'its name is too long to check' }
   const words = toolWords(tool)
   const server = serverOf(tool)
   for (const [name, re] of Object.entries(SERVER_READS)) {
-    if (server.split(/[^a-z0-9]+/).includes(name) && re.test(words)) return { verdict: 'pass', why: `a ${name} tool that only reads` }
+    if (`_${server}_`.includes(`_${name}_`) && re.test(words)) return { verdict: 'pass', why: `a ${name.replace(/_/g, '-')} tool that only reads` }
   }
   const list = words.split('_').filter(Boolean)
   if (words === '') return { verdict: 'ask', why: 'its name says nothing' }
+  if (COMMON_READS.test(words) && !list.some(w => acts(w) && w !== 'retrieve')) return { verdict: 'pass', why: 'it only reads' }
   if (META.test(words)) return { verdict: 'ask', why: 'it runs other tools, code or commands' }
   if (list.some(hidesRisk)) return { verdict: 'ask', why: 'its name holds a sending, paying, publishing or deleting verb' }
-  if (list.some(w => HIGH_RISK.includes(w)) && !DRAFT_ONLY.test(words) && !isReadName(list)) {
+  const isDraft = DRAFT_ONLY.test(words) || (words === SLACK_DRAFT && `_${server}_`.includes('_slack_'))
+  if (list.some(w => HIGH_RISK.includes(w)) && !isDraft && !isReadName(list)) {
     return { verdict: 'ask', why: 'it sends, posts, publishes, deletes, pays or pushes' }
   }
-  if (isReadOnly) return { verdict: 'pass', why: 'the engine says it is read-only' }
   if (isReadName(list)) return { verdict: 'pass', why: 'it only reads' }
-  if (DRAFT_ONLY.test(words)) return { verdict: 'pass', why: 'it only writes a draft' }
-  if (GENERATES.test(words) && !NOT_JUST_GENERATION.test(words)) {
+  if (isReadOnly && !list.some(acts)) return { verdict: 'pass', why: 'the engine says it is read-only' }
+  if (isDraft) return { verdict: 'pass', why: 'it only writes a draft' }
+  const media = (GENERATES.test(words) || FREE_MEDIA.test(words)) && !NOT_JUST_GENERATION.test(words) &&
+    !list.some(w => acts(w) && !MEDIA_VERBS.has(w))
+  if (media) {
     return creditsFree
       ? { verdict: 'pass', why: 'it generates media, and generation credits are free (/delegate credits)' }
       : { verdict: 'ask', why: 'it generates media, and the person asked to approve generation credits (/delegate credits ask)' }
