@@ -265,7 +265,7 @@ export const COMMAND_FIELDS = ['command', 'cmd', 'input', 'script', 'code']
 /** MCP tools that run commands or code (by the words of their own name, so `desktop-commander` is not one). */
 const MCP_RUNS = /(?:^|_)(?:process|processes|exec|execute|shell|command|commands|terminal|bash|run|script|code|eval|sandbox|python|interact)(?:_|$)/
 /** MCP tools that write, move or produce files: their path-like arguments are checked. */
-const MCP_WRITES = /(?:^|_)(?:write|edit|move|copy|put|save|download|export|output|generate|upload|create|extract|convert|unzip|rename|append|replace|patch|delete|remove|mkdir|insert|block)(?:_|$)/
+const MCP_WRITES = /(?:^|_)(?:write|edit|move|copy|put|save|download|export|output|generate|upload|create|extract|convert|unzip|rename|append|replace|patch|delete|remove|mkdir|insert|block|screenshot|capture|record|render|print|dump|snapshot)(?:_|$)/
 
 /** The commands a call runs: a non-MCP tool's string `command`, or an MCP process tool's command-like fields. */
 export function commandsOf(tool: string, fields: Record<string, unknown>): string[] {

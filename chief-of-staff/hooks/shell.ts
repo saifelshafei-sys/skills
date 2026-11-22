@@ -212,7 +212,8 @@ export function parse(command: string, depth = 0, budget: Budget = newBudget()):
       }
       continue
     }
-    if (c === ';' || c === '|' || c === '&' || c === '(' || c === ')' || ((c === '{' || c === '}') && !started)) { endCommand(); i++; continue }
+    // `{ cmd; }` groups: a brace alone; `{a,b}` in a word is brace expansion and stays in the word.
+    if (c === ';' || c === '|' || c === '&' || c === '(' || c === ')' || (c === '{' && !started && /[\s]/.test(s[i + 1] ?? ' ')) || (c === '}' && !started)) { endCommand(); i++; continue }
     if (c === ' ' || c === '\t' || c === '\r') { endWord(); i++; continue }
     if ((c === '*' || c === '?' || c === '[') && !started) dynamic = true
     if (c === '*' || c === '?') dynamic = true
@@ -234,9 +235,18 @@ export function parse(command: string, depth = 0, budget: Budget = newBudget()):
       for (const body of cmd.heredocs) out.push(...parse(body, depth + 1, budget))
     } else if (name === 'eval') {
       out.push(...parse(args.map(a => a.text).join(' '), depth + 1, budget))
-    } else if (['su', 'runuser', 'flock', 'script'].includes(name) || cmd.words.some(w => ['su', 'runuser', 'script'].includes(programName(w.text)))) {
+    } else if (name === 'trap') {
+      // trap 'cmd' SIGNAL runs cmd later.
+      const p = args.filter(a => !a.text.startsWith('-'))
+      if (p.length > 1 && p[0]) out.push(...parse(p[0].text, depth + 1, budget))
+    } else if (name === 'parallel' || cmd.words.some(w => programName(w.text) === 'parallel')) {
+      // parallel ::: 'cmd1' 'cmd2' with no command of its own runs each argument.
+      const at = cmd.words.findIndex(w => w.text === ':::')
+      const before = cmd.words.slice(0, at).filter(w => !w.text.startsWith('-') && programName(w.text) !== 'parallel')
+      if (at >= 0 && before.length === 0) for (const w of cmd.words.slice(at + 1)) out.push(...parse(w.text, depth + 1, budget))
+    } else if (['su', 'runuser', 'flock', 'script'].includes(name) || cmd.words.some(w => ['su', 'runuser', 'script', 'flock'].includes(programName(w.text)))) {
       const all = cmd.words
-      const flag = all.findIndex(a => a.text === '-c' || a.text === '--command' || a.text.startsWith('--command='))
+      const flag = all.findIndex(a => /^-[a-zA-Z]*c$/.test(a.text) || a.text === '--command' || a.text.startsWith('--command='))
       if (flag >= 0) {
         const f = all[flag] as Word
         out.push(...parse(f.text.startsWith('--command=') ? f.text.slice(10) : all[flag + 1]?.text ?? '', depth + 1, budget))
@@ -843,6 +853,11 @@ export function destinations(command: string): { dests: Destination[]; opaque: b
         add(dir ?? { text: '.', dynamic: false }, true, true)
         break
       }
+      case 'awk': case 'gawk':
+        if (args.some((a, i) => (a.text === '-i' && args[i + 1]?.text === 'inplace') || a.text === '-iinplace')) {
+          for (const w of p.slice(p[0]?.text === 'inplace' ? 2 : 1)) add(w, true)
+        }
+        break
       case 'sed': case 'perl': case 'ruby': {
         const inPlace = args.some(a => /^-[a-zA-Z]*i/.test(a.text) || a.text.startsWith('--in-place'))
         if (inPlace) {
