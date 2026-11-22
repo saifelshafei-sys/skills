@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import { checkMcp, toolWords } from './gate'
 import { classify, hasFolder, mentionsProtected, normalize } from './paths'
 import type { PathClass, Protected } from './paths'
-import { destinations, MAX_COMMAND, plainText, rewritesHistory, runsDeploy, runsLeasePush, shellNeedsPerson } from './shell'
+import { bypassInCommand, destinations, historyKind, MAX_COMMAND, plainText, runsDeploy, runsLeasePush, shellNeedsPerson, UNKNOWN_CWD, unreadable } from './shell'
 import {
   agentNamed, annotate, brokenLine, buildTeam, checkLines, confirmLines, departmentRules, EMPTY_TEAM,
   enabledIds, isClean, MAX_FILE_BYTES, offLine, ownName, PLUGIN, strictest, teamLines,
@@ -36,10 +36,11 @@ export const DESIGNER_OFF_LIMITS =
  * them: an agent file may make its role stricter, never looser. Only a role
  * listed here with `canDeploy` may deploy, and only as the exact type
  * `chief-of-staff:<name>` with `can-deploy: true` in a clean file. A new role
- * gets deploy rights only by being added here.
+ * gets deploy rights only by being added here. `writeDirs`: project folders a
+ * role's `write-dirs:` may open for any file type, despite its write limit.
  */
-export const FLOOR: Readonly<Record<string, { writeLimit: WriteLimit; canDeploy: boolean }>> = {
-  'reverse-engineer': { writeLimit: 'md-only', canDeploy: false },
+export const FLOOR: Readonly<Record<string, { writeLimit: WriteLimit; canDeploy: boolean; writeDirs?: string[] }>> = {
+  'reverse-engineer': { writeLimit: 'md-only', canDeploy: false, writeDirs: ['research', 'captures'] },
   'creative-director': { writeLimit: 'md-only', canDeploy: false },
   'web-designer': { writeLimit: 'no-scripts', canDeploy: false },
   'devops-engineer': { writeLimit: 'none', canDeploy: true },
@@ -55,10 +56,10 @@ export const FLOOR: Readonly<Record<string, { writeLimit: WriteLimit; canDeploy:
 
 /** Scrapling (or any) settings that get past bot protection: always refused. */
 /** Keys whose truthy value gets past bot protection (Scrapling's and any): always refused. */
-export const BYPASS_ARGS = /^(solve_cloudflare|solve_captcha|captcha.*|bypass.*)$/i
+export const BYPASS_ARGS = /^(solve_?cloudflare|solve_?captcha|captcha.*|bypass.*)$/i
 /** The same in a command line: the `--solve-...` flag in either spelling, or the key set to a truthy value with `=` or `:`, any quotes. */
-export const BYPASS_SHELL = /--solve[-_](?:cloudflare|captcha)\b|\bsolve_(?:cloudflare|captcha)\b['"]?\s*[=:]\s*['"]?(?:true|1|yes|on)\b/i
-const TRUTHY = (v: unknown) => v === true || v === 1 || (typeof v === 'string' && /^(?:true|1|yes|on)$/i.test(v.trim()))
+export const BYPASS_SHELL = /--solve[-_]?(?:cloudflare|captcha)\b|\bsolve_?(?:cloudflare|captcha)\b['"]?\s*[=:]\s*['"]?(?:true|1|yes|on|t|y)\b/i
+const TRUTHY = (v: unknown) => v === true || v === 1 || (typeof v === 'string' && /^(?:true|1|yes|on|t|y)$/i.test(v.trim()))
 
 /** Whether some key at most four levels down asks to get past bot protection with a truthy value. */
 function bypassIn(value: unknown, depth = 0): boolean {
@@ -71,7 +72,8 @@ export function bypassLimit(tool: string, fields: Record<string, unknown>): stri
   const why = 'Not allowed: this team does not get past CAPTCHAs, Cloudflare challenges or other bot protection. ' +
     'If a site blocks normal access, report it as blocked and move on (or use its public pages, an official API, or ask the person).'
   if (tool.startsWith('mcp__') && bypassIn(fields)) return why
-  if (commandFields(fields).some(c => BYPASS_SHELL.test(c.slice(0, MAX_COMMAND * 4)))) return why
+  // Only in what actually runs: not a commit message, a grep pattern or a heredoc fed to a non-shell.
+  if (commandFields(fields).some(c => bypassInCommand(c, BYPASS_SHELL))) return why
   return undefined
 }
 
@@ -81,17 +83,20 @@ export function roleName(type: string | undefined): string {
   return type.includes(':') ? type.slice(type.lastIndexOf(':') + 1) : type
 }
 
-/** Why a history rewrite or force push is refused (a deploying role may still `--force-with-lease`). */
+/** Why a history rewrite (filter-repo, filter-branch, BFG) is refused: what agents use it for is removing a leaked key. */
 export const HISTORY_LIMIT = "Rewriting git history is the person's call: it can't be undone and breaks other copies. " +
   "Report the leaked key's location and rotation steps instead."
+/** Why a force push, mirror or prune is refused (a deploying role may still `--force-with-lease`). */
+export const FORCE_LIMIT = "Rewriting git history is the person's call: a force push, mirror or prune overwrites the remote, can't be undone " +
+  'and breaks other copies. Push normally, or report that the push needs the person.'
 
 /** What a caller may do: its write limit, whether it may deploy, and the hint its denials carry. */
-export type Limits = { role: string; writeLimit: WriteLimit; canDeploy: boolean; hint: string; isBroken: boolean }
+export type Limits = { role: string; writeLimit: WriteLimit; canDeploy: boolean; hint: string; isBroken: boolean; writeDirs: string[] }
 
 /** The Chief of Staff itself: no write limit (its own no-edit rule is separate), no deploy. */
-export const CHIEF: Limits = { role: '', writeLimit: 'none', canDeploy: false, hint: '', isBroken: false }
+export const CHIEF: Limits = { role: '', writeLimit: 'none', canDeploy: false, hint: '', isBroken: false, writeDirs: [] }
 /** An agent whose type cannot be told: the tightest limits. */
-export const UNKNOWN: Limits = { role: 'this agent', writeLimit: 'md-only', canDeploy: false, hint: '', isBroken: true }
+export const UNKNOWN: Limits = { role: 'this agent', writeLimit: 'md-only', canDeploy: false, hint: '', isBroken: true, writeDirs: [] }
 
 /**
  * The limits of a caller by its agent type (`chief-of-staff:web-designer`),
@@ -106,9 +111,9 @@ export function limitsFor(type: string | undefined, team: Team): Limits {
   const own = ownName(type)
   const name = (own ?? roleName(type)).trim().toLowerCase()
   const floor = Object.hasOwn(FLOOR, name) ? FLOOR[name] : undefined
-  if (own === undefined) return { role: name, writeLimit: floor?.writeLimit ?? 'none', canDeploy: false, hint: '', isBroken: false }
+  if (own === undefined) return { role: name, writeLimit: floor?.writeLimit ?? 'none', canDeploy: false, hint: '', isBroken: false, writeDirs: [] }
   const agent = agentNamed(team, own)
-  if (!agent || !isClean(agent)) return { role: own, writeLimit: 'md-only', canDeploy: false, hint: '', isBroken: true }
+  if (!agent || !isClean(agent)) return { role: own, writeLimit: 'md-only', canDeploy: false, hint: '', isBroken: true, writeDirs: [] }
   return {
     role: own,
     // A role not in the FLOOR that states no write-limit writes only .md (fail closed).
@@ -116,6 +121,8 @@ export function limitsFor(type: string | undefined, team: Team): Limits {
     canDeploy: floor?.canDeploy === true && agent.canDeploy,
     hint: agent.limitHint,
     isBroken: false,
+    // Folders the file opens, as far as the FLOOR allows them (reverse-engineer's research/ and captures/).
+    writeDirs: agent.writeDirs.filter(d => floor?.writeDirs?.includes(d)),
   }
 }
 
@@ -141,10 +148,39 @@ export function writeLimitWhy(limits: Limits, path: string): string | undefined 
   return undefined
 }
 
+/** Where a write limit applies: the project (the session's folder and below), outside temp folders. */
+export type Scope = { cwd?: string; home?: string; temps: string[] }
+export const TEMP_DIRS = ['/tmp', '/var/tmp', '/private/tmp', '/var/folders', '/private/var/folders']
+
+/**
+ * Why a caller may not write `path` under its write limit, or undefined. The
+ * limit holds only inside the project: the session's folder and below (all
+ * paths when that is not known), never in a temp folder; a `write-dirs:`
+ * folder at the top of the project is open to any file. Protected places are
+ * checked separately and everywhere.
+ */
+export function writeLimitAt(limits: Limits, path: string, scope: Scope): string | undefined {
+  if (limits.writeLimit === 'none') return undefined
+  const n = normalize(path, scope.home) ?? path.replace(/\\/g, '/')
+  const temps = [...TEMP_DIRS, ...scope.temps].map(t => t.replace(/\\/g, '/').replace(/\/+$/, ''))
+  if (temps.some(t => t !== '' && (n === t || n.startsWith(`${t}/`)))) return undefined
+  let rel = n
+  if (scope.cwd && n.startsWith('/')) {
+    const c = scope.cwd.replace(/\\/g, '/').replace(/\/+$/, '')
+    if (n !== c && !n.startsWith(`${c}/`)) return undefined
+    rel = n.slice(c.length + 1)
+  }
+  const top = rel.replace(/^\.\//, '').split('/')[0] ?? ''
+  if (!rel.startsWith('/') && limits.writeDirs.includes(top)) return undefined
+  return writeLimitWhy(limits, path)
+}
+
 /** Why a caller with these limits may not run `command`, or undefined. */
 export function commandLimitWhy(limits: Limits, command: string, team: Team): string | undefined {
-  if (rewritesHistory(command)) return HISTORY_LIMIT
-  if (!limits.canDeploy && runsLeasePush(command)) return HISTORY_LIMIT
+  const kind = historyKind(command)
+  if (kind === 'rewrite') return HISTORY_LIMIT
+  if (kind === 'force') return FORCE_LIMIT
+  if (!limits.canDeploy && runsLeasePush(command)) return FORCE_LIMIT
   if (!limits.canDeploy && runsDeploy(command)) {
     const can = deployers(team)
     if (can.length === 0) return 'Role limit: no role on the team may deploy right now (devops-engineer must be on the team with can-deploy: true in a clean agent file).'
@@ -176,21 +212,45 @@ export function roleLimit(role: string, tool: string, path: string, command: str
  * in a command that mentions a protected place. Plain reads pass: only the
  * destination counts.
  */
-export function shellProtected(command: string, at: Protected): PathClass {
-  if (command.length > MAX_COMMAND) return 'deny'
-  const { dests, opaque } = destinations(command)
+export function shellProtected(command: string, at: Protected, cwd?: string): PathClass {
+  if (unreadable(command)) return 'deny'
+  const { dests, code } = destinations(command)
   const plain = plainText(command)
-  if (opaque && mentionsProtected(plain, at)) return 'deny'
+  // Inline code whose writes cannot be followed: refused when the code names a protected place.
+  if (code.some(c => mentionsProtected(plainText(c), at))) return 'deny'
   let worst: PathClass
   for (const d of dests) {
-    if (d.path.dynamic) { if (mentionsProtected(plain, at)) return 'deny'; continue }
-    const n = normalize(d.path.text, at.home)
-    if (n === undefined || hasFolder(n, at)) return 'deny'
-    const c = classify(n, at)
+    if (d.path.dynamic || d.path.text.startsWith(UNKNOWN_CWD)) { if (mentionsProtected(plain, at)) return 'deny'; continue }
+    const c = destClass(joinCwd(d.path.text, cwd), at, d.into === true)
     if (c === 'deny') return 'deny'
     if (c === 'ask') worst = 'ask'
   }
   return worst
+}
+
+/** A relative path joined to the session's folder, when that is known. */
+export function joinCwd(path: string, cwd: string | undefined): string {
+  if (!cwd || /^(?:\/|~|\$HOME|\$\{HOME\}|[A-Za-z]:[\\/])/.test(path)) return path
+  return `${cwd.replace(/[\\/]+$/, '')}/${path}`
+}
+
+/**
+ * Whether a folder holds protected places in a way a write into it can reach:
+ * any `.claude` folder, a Claude Code config folder, or a protected folder.
+ */
+export function isProtectedDir(plain: string, at: Protected): boolean {
+  const p = plain.replace(/\/+$/, '').toLowerCase()
+  if (/(^|\/)\.claude$/.test(p)) return true
+  if (at.configDirs.some(d => d.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase() === p)) return true
+  return classify(p, at) === 'deny'
+}
+
+/** What may happen to a write destination: refused if protected, under the plugin's folder name, or (for a write into a folder) a protected folder. */
+export function destClass(path: string, at: Protected, into: boolean): PathClass {
+  const n = normalize(path, at.home)
+  if (n === undefined || hasFolder(n, at)) return 'deny'
+  if (into && isProtectedDir(n, at)) return 'deny'
+  return classify(n, at)
 }
 
 /** shellProtected with the protected places given as spellings (the plugin's folder, `.claude/...`): for tests and tools. */
@@ -227,19 +287,29 @@ function commandFields(value: unknown, depth = 0, out: string[] = []): string[] 
 /** Whether an MCP tool's name says it writes, moves or produces files. */
 export const mcpWrites = (tool: string) => MCP_WRITES.test(toolWords(tool))
 
-/** String fields that look like paths: start with `/`, `~`, `./` or `../`, or hold a `/` and a file extension; no URLs, no spaces. */
+/** Keys that name a path: their values are paths even with spaces in them, and `file://` is taken off. */
+const PATH_KEYS = /^(?:path|paths|file|files|file_?path|filename|file_?name|dest|destination|target|output|output_?path|output_?dir|out|out_?dir|dir|directory|folder|to|save_?path|download_?path)$/i
+
+/**
+ * String fields that look like paths: values of path keys (spaces allowed,
+ * `file://` removed), and strings that start with `/`, `~`, `./` or `../`, or
+ * hold a `/` and a file extension (no URLs, no spaces). At most four levels down.
+ */
 export function pathLike(fields: Record<string, unknown>): string[] {
   const out: string[] = []
-  const walk = (v: unknown, depth: number) => {
+  const walk = (v: unknown, depth: number, key: string) => {
     if (typeof v === 'string') {
-      const t = v.trim()
-      if (t.length > 0 && t.length < 4096 && !/\s/.test(t) && !t.includes('://') &&
+      let t = v.trim()
+      if (t.length === 0 || t.length >= 4096) return
+      if (/^file:\/\//i.test(t)) t = decodeURIComponent(t.replace(/^file:\/\/(?:localhost)?/i, ''))
+      if (PATH_KEYS.test(key) && !/^[a-z][\w+.-]*:\/\//i.test(t)) { out.push(t); return }
+      if (!/\s/.test(t) && !t.includes('://') &&
         (/^(?:\/|~|\.\.?\/|[A-Za-z]:[\\/])/.test(t) || (/[\\/]/.test(t) && /\.[A-Za-z0-9]{1,8}$/.test(t)))) out.push(t)
     } else if (depth < 4 && v && typeof v === 'object') {
-      for (const [k, x] of Object.entries(v)) if (!OWN_FIELDS.has(k)) walk(x, depth + 1)
+      for (const [k, x] of Object.entries(v)) if (!OWN_FIELDS.has(k)) walk(x, depth + 1, Array.isArray(v) ? key : k)
     }
   }
-  walk(fields, -1)
+  walk(fields, -1, '')
   return out
 }
 
@@ -248,7 +318,7 @@ export const PROTECTED_LIMIT = (path: string) =>
   'Report the change you want; the person makes it.'
 export const UNRESOLVED_LIMIT = (path: string) =>
   `Not allowed: the path ${path} cannot be resolved, so it cannot be checked. Use a plain absolute path.`
-export const TOO_LONG = `Not allowed: the command is over ${MAX_COMMAND / 1024} KB, too long to check. Split it, or write a script file and run that.`
+export const TOO_LONG = `Not allowed: the command is too long (over ${MAX_COMMAND / 1024} KB) or too complex to check. Split it into shorter commands.`
 
 /** The confirm gate's message, for the dialog and, where nobody can be asked, for the agent. */
 export const CONFIRM = 'Draft it and report back; the Chief of Staff does this only after the person confirms.'
@@ -304,6 +374,7 @@ export const CORE_RULES = [
   '- "How does <another product> do <feature>?" goes to reverse-engineer first; the team then builds an original version from its report. Never copy another product\'s code, text or assets.',
   '- Anything with a form, login, payment, API or user data also gets security-reviewer before it is called done.',
   '- One agent, one role: if a brief would ask an agent to do another role\'s work, split it and assign that part to the other role.',
+  '- If a guardrail refuses something you believe is legitimate, stop and report the exact refusal. Never work around it (for example by writing the command to a script file and running it). Tell every agent the same in its brief.',
   '- Agents need the person\'s OK for any connected (MCP) tool that is not clearly read-only, and for shell commands that run claude, change GitHub or send data out: they draft it and report back, and you do it only after the person confirms.',
 ]
 
@@ -440,7 +511,7 @@ async function enabled($: EngineInterface, team: Team): Promise<Set<string>> {
 
 /** The calling agent's type: '' for the Chief of Staff, undefined when it cannot be told. */
 async function typeOf($: EngineInterface, agentId: string | undefined): Promise<string | undefined> {
-  if (agentId === undefined) return ''
+  if (agentId === undefined) return (await isNested($)) ? undefined : ''
   try {
     return (await $.agent.list()).find(a => a.id === agentId)?.type
   } catch {
@@ -493,7 +564,7 @@ async function pathClassOf($: EngineInterface, path: string, at: Protected): Pro
   if (plain === undefined) return 'unresolved'
   const real = await realOf($, plain)
   if (real === undefined) return 'unresolved'
-  const classes = [classify(plain, at), classify(real, at)]
+  const classes = [destClass(plain, at, true), destClass(real, at, true)]
   return classes.includes('deny') ? 'deny' : classes.includes('ask') ? 'ask' : undefined
 }
 
@@ -507,9 +578,67 @@ function strings(value: unknown, depth = 0, out: string[] = [], max = 6): string
 const OWN_FIELDS = new Set(['tool', 'agentId', 'tool_use_id'])
 
 /** Origins of a command run that are the person's own: Enter at the prompt, the Remote Control bridge, their own `claude -p`. */
-const PERSON_ORIGINS = new Set(['composer', 'bridge', 'sdk'])
+const PERSON_ORIGINS = new Set(['composer', 'bridge'])
 const byPerson = (e: { origin?: { kind?: string } }) => PERSON_ORIGINS.has(e.origin?.kind ?? '')
-const NOT_PERSON = 'Only the person can change this setting (typed at the prompt), not a plugin, a schedule or another session.'
+const NOT_PERSON = 'Only the person can loosen this setting, typed at the prompt or through Remote Control: not `claude -p`, a plugin, a schedule, ' +
+  'another session or a Claude Code session started by an agent. Tightening works from anywhere.'
+
+/**
+ * Whether this session was started from inside another Claude Code session
+ * (`CLAUDECODE` or `CLAUDE_CODE_CHILD_SESSION` set, as Claude Code sets them
+ * for what it runs): then the whole session is held to agent limits, and
+ * nothing can loosen the settings.
+ */
+let nestedRead: Promise<boolean> | undefined
+function isNested($: EngineInterface): Promise<boolean> {
+  nestedRead ??= (async () => {
+    for (const name of ['CLAUDECODE', 'CLAUDE_CODE_CHILD_SESSION'] as const) {
+      try {
+        const v = name === 'CLAUDECODE' ? await $.env.get('CLAUDECODE') : await $.env.get('CLAUDE_CODE_CHILD_SESSION')
+        if (v !== undefined && v.trim() !== '' && v.trim() !== '0') return true
+      } catch {
+        // Not readable: not known to be nested.
+      }
+    }
+    return false
+  })()
+  return nestedRead
+}
+
+/** Where write limits apply now: the session's folder, $HOME, and temp folders ($TMPDIR, Claude's scratchpad). */
+async function scopeOf($: EngineInterface, at: Protected): Promise<Scope> {
+  let cwd: string | undefined
+  try {
+    cwd = (await $.session.cwd()).replace(/\\/g, '/')
+  } catch {
+    cwd = undefined
+  }
+  const temps: string[] = []
+  try {
+    const t = await $.env.get('TMPDIR')
+    if (t) temps.push(t)
+  } catch {
+    // None.
+  }
+  return { cwd, home: at.home, temps }
+}
+
+/** Shell write destinations resolved through their nearest existing folder, then classified. */
+async function shellPathClass($: EngineInterface, command: string, at: Protected, cwd: string | undefined): Promise<PathClass> {
+  const lexical = shellProtected(command, at, cwd)
+  if (lexical === 'deny') return 'deny'
+  let worst = lexical
+  for (const d of destinations(command).dests) {
+    if (d.path.dynamic || d.path.text.startsWith(UNKNOWN_CWD)) continue
+    const plain = normalize(joinCwd(d.path.text, cwd), at.home)
+    if (plain === undefined) return 'deny'
+    const real = await realOf($, plain)
+    const c = real === undefined ? undefined : destClass(real, at, d.into === true)
+    if (c === 'deny') return 'deny'
+    if (c === 'ask') worst = 'ask'
+  }
+  return worst
+}
 
 /** What /team shows: every department, on or off, and its agents; agent files with problems. */
 export function teamReport(team: Team, on: Set<string>): string {
@@ -586,14 +715,18 @@ export const register: Register = on => {
     // Commands: Bash, Monitor, PowerShell (any tool with a string `command`), and an MCP process tool's command fields.
     const commands = commandsOf(tool, fields)
     if (!isFile && !isSpawn && !isMcp && commands.length === 0) return next(e)
-    const isAgent = e.agentId !== undefined
+    // A session started inside another Claude Code session is held to agent limits throughout.
+    const isAgent = e.agentId !== undefined || (await isNested($))
     if (!isAgent && isFile && (await delegating($))) return { deny: BLOCKED(tool) }
 
-    // A command too long to read: the Chief of Staff's is refused; an agent's goes to the person (tool.check).
-    const readable = commands.filter(c => c.length <= MAX_COMMAND)
+    // A command too long or too complex to read: the Chief of Staff's is refused; an agent's goes to the person (tool.check).
+    const readable = commands.filter(c => !unreadable(c))
     if (!isAgent && readable.length < commands.length) return { deny: TOO_LONG }
     // History rewrites and force pushes: refused for everyone, before anything else is looked up.
-    if (readable.some(rewritesHistory)) return { deny: HISTORY_LIMIT }
+    for (const c of readable) {
+      const kind = historyKind(c)
+      if (kind) return { deny: kind === 'rewrite' ? HISTORY_LIMIT : FORCE_LIMIT }
+    }
 
     const team = await teamOf($)
     if (isSpawn) {
@@ -613,27 +746,28 @@ export const register: Register = on => {
     }
     const paths = isFile ? [text('file_path') || text('notebook_path')]
       : isMcp && mcpWrites(tool) ? pathLike(fields) : []
+    const at = await protectedPlaces($)
+    const scope = await scopeOf($, at)
     if (isAgent) {
-      const at = await protectedPlaces($)
       for (const p of paths) {
-        const c = await pathClassOf($, p, at)
+        const c = await pathClassOf($, joinCwd(p, scope.cwd), at)
         if (c === 'unresolved') return { deny: UNRESOLVED_LIMIT(p) }
         if (c === 'deny') return { deny: PROTECTED_LIMIT(p) }
       }
       for (const c of readable) {
-        if (shellProtected(c, at) === 'deny') return { deny: PROTECTED_LIMIT('a protected path in the command') }
-        // Best effort: the write limit on files a command writes (redirects, tee, cp, sed -i, ...).
+        if ((await shellPathClass($, c, at, scope.cwd)) === 'deny') return { deny: PROTECTED_LIMIT('a protected path in the command') }
+        // Best effort: the write limit on files a command writes (redirects, tee, cp, sed -i, ...), inside the project.
         for (const d of destinations(c).dests) {
-          if (!d.content || d.path.dynamic) continue
+          if (!d.content || d.into || d.path.dynamic || d.path.text.startsWith(UNKNOWN_CWD)) continue
           const n = normalize(d.path.text, at.home)
           if (n === undefined || n.startsWith('/dev/') || !/\.[A-Za-z0-9]+$/.test(n)) continue
-          const why = writeLimitWhy(limits, n)
+          const why = writeLimitAt(limits, joinCwd(n, scope.cwd), scope)
           if (why) return { deny: why }
         }
       }
     }
     for (const p of paths) {
-      const why = writeLimitWhy(limits, p)
+      const why = writeLimitAt(limits, joinCwd(p, scope.cwd), scope)
       if (why) return { deny: why }
     }
     return next(e)
@@ -667,7 +801,7 @@ export const register: Register = on => {
   // a write to a project's CLAUDE.md. The Chief of Staff is not gated: it
   // asks the person itself. Always on.
   on('tool.check', async ($, e, next) => {
-    if (e.agentId === undefined) return next(e)
+    if (e.agentId === undefined && !(await isNested($))) return next(e)
     const input = (e.input ?? {}) as Record<string, unknown>
     let what: string | undefined
     if (e.tool.startsWith('mcp__')) {
@@ -677,8 +811,9 @@ export const register: Register = on => {
       else if (check.verdict === 'ask') what = `run ${e.tool}, which needs the person's OK: ${check.why}`
     } else if (typeof input.command === 'string') {
       const why = shellNeedsPerson(input.command)
+      const at = await protectedPlaces($)
       if (why) what = `run a ${e.tool} command that ${why}`
-      else if (shellProtected(input.command, await protectedPlaces($)) === 'ask') what = `run a ${e.tool} command that writes a CLAUDE.md memory file`
+      else if ((await shellPathClass($, input.command, at, (await scopeOf($, at)).cwd)) === 'ask') what = `run a ${e.tool} command that writes a CLAUDE.md memory file`
     } else if (BUILD_TOOLS.includes(e.tool)) {
       const p = typeof input.file_path === 'string' ? input.file_path : typeof input.notebook_path === 'string' ? input.notebook_path : ''
       const at = await protectedPlaces($)
@@ -693,7 +828,7 @@ export const register: Register = on => {
     const reason = confirmReason(role, what, agentNamed(await teamOf($), role))
     return e.approver === 'person' ? { decision: 'ask' as const, reason } : { decision: 'deny' as const, reason }
   }).catch(($, e, next) => {
-    if (e.agentId === undefined) return next(e)
+    if (e.agentId === undefined && nestedRead === undefined) return next(e)
     const input = (e.input ?? {}) as Record<string, unknown>
     if (e.tool.startsWith('mcp__') || typeof input.command === 'string' || BUILD_TOOLS.includes(e.tool)) {
       return { decision: 'deny' as const, reason: GUARD_FAILED(e.tool) }
@@ -703,7 +838,9 @@ export const register: Register = on => {
 
   on('command.run', { command: 'delegate' }, async ($, e) => {
     const [want = '', arg = ''] = e.args.trim().toLowerCase().split(/\s+/)
-    if (want !== '' && !byPerson(e)) return { text: NOT_PERSON }
+    // Loosening (delegation off, credits free) only from the person; tightening from anywhere.
+    const loosens = (want === 'off' && arg === '') || (want === 'credits' && arg === 'free')
+    if (loosens && (!byPerson(e) || (await isNested($)))) return { text: NOT_PERSON }
     if ((want === 'on' || want === 'off') && arg === '') {
       await $.store.set(STORE_KEY, want === 'on')
       $.ui.status(want === 'on' ? 'Chief of Staff: delegating' : undefined)
@@ -727,9 +864,15 @@ export const register: Register = on => {
 
   on('command.run', { command: 'team' }, async ($, e) => {
     const team = await teamOf($, true)
-    const said = teamCommand(e.args, team, await chosenDepartments(k => $.store.get(k)))
-    if (said.chosen && !byPerson(e)) return { text: NOT_PERSON }
-    if (said.chosen) await $.store.set(TEAM_KEY, { ...said.chosen })
+    const chosen = await chosenDepartments(k => $.store.get(k))
+    const said = teamCommand(e.args, team, chosen)
+    if (said.chosen) {
+      // Turning a department on (also by /team reset) loosens: only from the person. Turning one off works from anywhere.
+      const before = enabledIds(team, chosen)
+      const loosens = [...enabledIds(team, said.chosen)].some(id => !before.has(id))
+      if (loosens && (!byPerson(e) || (await isNested($)))) return { text: NOT_PERSON }
+      await $.store.set(TEAM_KEY, { ...said.chosen })
+    }
     return { text: said.text }
   })
 

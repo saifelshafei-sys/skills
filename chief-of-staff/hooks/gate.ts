@@ -171,7 +171,7 @@ export type McpCheck = { verdict: McpVerdict; why: string }
  * key is a word of the server's name (`plugin_x_scrapling` has `scrapling`).
  */
 export const SERVER_READS: Record<string, RegExp> = {
-  scrapling: /^(?:make_request|open_request_session|session_make_request|browser_open|browser_close|browser_fetch|browser_fetch_once|browser_extract|browser_screenshot|browser_network_requests?|close_session|list_sessions|bulk_get|bulk_fetch|stealthy_fetch|bulk_stealthy_fetch)$/,
+  scrapling: /^(?:get|fetch|screenshot|make_request|open_request_session|session_make_request|browser_open|browser_close|browser_fetch|browser_fetch_once|browser_extract|browser_screenshot|browser_network_requests?|close_session|list_sessions|bulk_get|bulk_fetch|stealthy_fetch|bulk_stealthy_fetch)$/,
   gmail: /^(?:label_[a-z0-9_]+|unlabel_[a-z0-9_]+|untrash_[a-z0-9_]+|unmark_[a-z0-9_]+_spam|download_gmail_attachment)$/,
   taplio: /^pick_media$/,
   higgsfield: new RegExp('^(?:balance|transactions|show_[a-z0-9_]+|get_[a-z0-9_]+|list_[a-z0-9_]+|apps_describe|apps_search|gpu_explore|gpu_list_[a-z0-9_]+|gpu_my|' +
@@ -184,13 +184,25 @@ export const SERVER_READS: Record<string, RegExp> = {
   '21st': /^(?:get_[a-z0-9_]+|list_[a-z0-9_]+|search(?:_[a-z0-9_]+)?|video_export_status|video_get_doc|video_list_blocks|video_search_blocks|video_snapshot)$/,
   '99tests': /^(?:get_report|get_sample_report|list_packages)$/,
   booking: /^answer_property_qa_by_ids_v2$/,
-  changethisfile: /^list_conversions$/,
-  claude_docs: /^guide$/,
+  changethisfile: /^(?:list_conversions|check_job)$/,
+  claude_docs: /^(?:guide|query|read)$/,
+  google_calendar: /^suggest_time$/,
   composio: /^(?:get_tool_schemas|search_tools|search_skills|wait_for_connections)$/,
   slack: /^search_[a-z0-9_]+$/,
   plugin_authoring: /^scan_secrets$/,
   desktop_commander: /^(?:read_multiple_files|read_process_output|get_recent_tool_calls|list_searches|start_search|stop_search|get_more_search_results)$/,
 }
+
+/**
+ * REA (reverse engineering): its analysis and read tools pass; these ask:
+ * anything that sets or changes settings, names, comments or bookmarks;
+ * pushes, installs, starts or stops on an Android device; runs rizin, gdb,
+ * cutter or Frida code; imports or records into the evidence store.
+ */
+export const REA_ACTS = new RegExp('^(?:set_[a-z0-9_]+|unset_[a-z0-9_]+|update_[a-z0-9_]+|annotate_[a-z0-9_]+|comment|inline_comment|goto_address|' +
+  'push_adb_file|install_adb_package|uninstall_adb_package|start_adb_[a-z0-9_]+|stop_adb_[a-z0-9_]+|execute_rizin_command|instrument_with_frida|' +
+  'load_frida_script|unload_frida_script|start_frida_session|resume_frida_session|gdb_console|start_gdb_session|rizin_debug_command|' +
+  'start_rizin_debug_session|cutter_command|import_[a-z0-9_]+|record_unknown|update_unknown)$')
 
 /** Read tools with common names on any server. */
 export const COMMON_READS = /^(?:get_file_contents|list_commits|search_code|browser_snapshot|browser_take_screenshot|retrieve_[a-z0-9_]+|get_library_docs|get_deployment_build_logs)$/
@@ -213,6 +225,9 @@ export function checkMcp(tool: string, isReadOnly = false, creditsFree = true): 
   if (tool.length > 256) return { verdict: 'ask', why: 'its name is too long to check' }
   const words = toolWords(tool)
   const server = serverOf(tool)
+  if (/(?:^|_)rea$/.test(server) && words !== '') {
+    return REA_ACTS.test(words) ? { verdict: 'ask', why: 'a REA tool that changes a device, a process or the analysis, or runs code' } : { verdict: 'pass', why: 'a REA analysis tool' }
+  }
   for (const [name, re] of Object.entries(SERVER_READS)) {
     if (`_${server}_`.includes(`_${name}_`) && re.test(words)) return { verdict: 'pass', why: `a ${name.replace(/_/g, '-')} tool that only reads` }
   }

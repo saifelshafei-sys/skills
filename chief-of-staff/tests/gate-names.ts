@@ -26,6 +26,8 @@ export const MUST_GATE = [
 
 /** QA's "must pass" that still pass under the allow-list: reads, drafts, and generation (credits free). */
 export const MUST_PASS = [
+  // round 4: allowed as read-only
+  'mcp__Google_Calendar__suggest_time',
   // passed again by the round-3 allow-list additions (Gmail labels, Higgsfield and Canva read tools)
   'mcp__Gmail__untrash_message', 'mcp__Gmail__label_message', 'mcp__Higgsfield__tiktok_publish_status', 'mcp__Higgsfield__gpu_job_quote', 'mcp__Higgsfield__gpu_job_status', 'mcp__Canva__request-outline-review', 'mcp__Canva__export-design',
   'mcp__Gmail__search_threads', 'mcp__Gmail__get_message', 'mcp__Gmail__list_drafts', 'mcp__Gmail__create_draft',
@@ -48,7 +50,6 @@ export const MUST_PASS = [
  * read word or noun (gpu, tiktok), or runs code (browser_exec).
  */
 export const NOW_ASK = [
-  'mcp__Google_Calendar__suggest_time',
   'mcp__Taplio__cancel_like', 'mcp__Taplio__unschedule',
   'mcp__Taplio__cancel_comment_draft', 'mcp__Higgsfield__tiktok_prepare_publish',
   'mcp__Higgsfield__save_project_publication_preview',

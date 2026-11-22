@@ -150,8 +150,12 @@ test('shell commands an agent runs only with the person\'s OK', async ($, on) =>
 })
 
 test('regex gaps: force push and deploy spellings', () => {
-  for (const c of ['git push --mirror', 'git push --delete origin main', 'git push -d origin main', 'git push origin :main', 'git push origin "+main"',
-    "git push origin '+main'", 'git push origin ":main"', 'git-filter-repo --path x', 'git push -fu origin main']) {
+  // round 4: deleting a remote branch asks (shellNeedsPerson); overwriting it stays refused
+  for (const c of ['git push --delete origin main', 'git push -d origin main', 'git push origin :main', 'git push origin ":main"']) {
+    expect(`${c} ${rewritesHistory(c)} ${String(shellNeedsPerson(c))}`).toBe(`${c} false deletes a remote branch. Deleting a remote branch needs the person's OK`)
+  }
+  for (const c of ['git push --mirror', 'git push --prune origin', 'git push origin "+main"',
+    "git push origin '+main'", 'git-filter-repo --path x', 'git push -fu origin main']) {
     expect(`${c} ${rewritesHistory(c)}`).toBe(`${c} true`)
   }
   for (const c of ['git push origin main', 'git push -u origin feat', 'git push --follow-tags', 'git push origin main:main', 'git push origin HEAD:refs/heads/x',

@@ -83,6 +83,8 @@ export type Agent = {
   checkedBy: string[]
   /** Actions that need the person's OK first (prose). */
   confirm: string[]
+  /** Project folders (`write-dirs:`) this role may write any file into despite its write limit, as far as the FLOOR allows. */
+  writeDirs: string[]
   /** Where it sits in its department's list (lower first); unset sorts after, by name. */
   order: number | undefined
   /** Added to the role's denial message (`limit-hint:`). */
@@ -252,6 +254,7 @@ export function parseAgent(file: string, text: string, departments: Department[]
     canDeploy: own.length === 0 && rawDeploy === 'true',
     checkedBy: listOf(fm['checked-by']).map(s => s.toLowerCase()),
     confirm: listOf(fm.confirm),
+    writeDirs: listOf(fm['write-dirs']).map(d => d.replace(/^\.?\/+|\/+$/g, '').toLowerCase()).filter(d => /^[a-z0-9][\w.-]*$/.test(d)),
     order: /^\d{1,6}$/.test(rawOrder) ? Number(rawOrder) : undefined,
     limitHint: (fm['limit-hint'] ?? '').trim().slice(0, 300),
     problems: own,

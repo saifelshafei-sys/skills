@@ -7,7 +7,7 @@ import {
   shellNeedsPerson,
 } from '../hooks/register'
 import { FILES } from './files'
-import { agentFiles, agents, deny, memoryStore, withAgent } from './helpers'
+import { agentFiles, agents, cwd, deny, memoryStore, withAgent } from './helpers'
 import { serve } from './serve'
 
 const verdict = (t: string, isReadOnly = false, free = true) => `${t} ${checkMcp(t, isReadOnly, free).verdict}`
@@ -53,6 +53,7 @@ test('item 7: a project CLAUDE.md asks; Claude Code\'s own memory and config are
   memoryStore(on)
   on('env.get', (_, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
   agents(on, { f1: 'chief-of-staff:frontend-developer' })
+  cwd(on, '/site')
   on('tool.call', () => ({ result: {} }))
   on('tool.check', () => ({ decision: 'allow' }))
   const write = (file_path: string) => $.tool.call({ tool: 'Write', file_path, content: 'x', agentId: 'f1' } as never)
@@ -198,8 +199,8 @@ test('item 13: /delegate and /team change only on the person\'s own run', async 
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   for (const origin of [{ kind: 'plugin', name: 'x' }, { kind: 'scheduled-trigger' }, { kind: 'peer' }, undefined]) {
-    expect(JSON.stringify(await $.command.run({ origin, command: 'delegate', args: 'off' } as never))).toContain('Only the person can change this')
-    expect(JSON.stringify(await $.command.run({ origin, command: 'team', args: 'on all' } as never))).toContain('Only the person can change this')
+    expect(JSON.stringify(await $.command.run({ origin, command: 'delegate', args: 'off' } as never))).toContain('Only the person can loosen this setting')
+    expect(JSON.stringify(await $.command.run({ origin, command: 'team', args: 'on all' } as never))).toContain('Only the person can loosen this setting')
   }
   expect(kept.get('delegate')).toBeUndefined()
   expect(kept.get('departments')).toBeUndefined()

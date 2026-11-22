@@ -5,6 +5,7 @@ skills: rea:reverse-engineer-anything, reverse-engineer-anything
 department: product-engineering
 does: how another site or app does something, with REA; evidence report, never copied code
 write-limit: md-only
+write-dirs: research, captures
 order: 10
 limit-hint: "Describe the technique in your report; the Chief of Staff assigns the build."
 ---

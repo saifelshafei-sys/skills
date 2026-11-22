@@ -56,5 +56,10 @@ export function agents(on: On, list: Record<string, string>): void {
   on('agent.list', () => ({ value: Object.entries(list).map(([id, type]) => ({ id, type, description: '', status: 'running' }) as never) }))
 }
 
+/** The session's folder, as `$.session.cwd()` answers it. */
+export function cwd(on: On, dir: string): void {
+  on('session.cwd', () => ({ value: dir }))
+}
+
 /** The deny text of a tool call's result, or undefined. */
 export const deny = (r: unknown): string | undefined => (r as { deny?: string }).deny

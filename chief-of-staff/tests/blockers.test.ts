@@ -51,7 +51,7 @@ test('blocker 1: an agent command over 16 KB asks or is refused; the Chief of St
   const long = `echo ${'a'.repeat(MAX_COMMAND)}`
   expect((await $.tool.check({ tool: 'Bash', input: { command: long }, agentId: 'a1' } as never)).decision).toBe('deny')
   expect((await $.tool.check({ tool: 'Bash', input: { command: long }, agentId: 'a1', approver: 'person' } as never)).decision).toBe('ask')
-  expect(String(deny(await $.tool.call({ tool: 'Bash', command: long } as never)))).toContain('too long to check')
+  expect(String(deny(await $.tool.call({ tool: 'Bash', command: long } as never)))).toContain('too long (over 16 KB) or too complex to check. Split it into shorter commands.')
   const t0 = Date.now()
   await $.tool.call({ tool: 'Bash', command: `git ${'-c '.repeat(70000)}x; git push -f`, agentId: 'a1' } as never)
   expect(Date.now() - t0 < 100).toBe(true)
@@ -108,11 +108,12 @@ test('blocker 3: shell commands that write to protected places, any spelling; pl
     "cd ~/.claude && echo '{}' > plugins/store/x.json", "echo '{}' > ~/.claude/'plugins'/store/x.json", "p=plugins; echo '{}' > ~/.claude/$p/store/x.json",
     "echo '{}' > ~/.claude/plug*/store/x.json", "echo x > .claude/agents/devops-engineer.md", "echo x > .mcp.json", 'echo x > ~/.claude.json',
     'tar -xf /tmp/x.tar -C ~/.claude/plugins', 'git -C ~/.claude/plugins/marketplaces/m pull', 'jq . /tmp/x | dd of=/home/u/.claude/settings.json',
-    "node -e \"require('fs').writeFileSync(process.env.HOME+'/.claude/plugins/store/x.json','x')\"", 'python3 script.py /home/u/.claude/settings.json',
+    "node -e \"require('fs').writeFileSync(process.env.HOME+'/.claude/plugins/store/x.json','x')\"",
     'perl -i -pe s/a/b/ /home/u/.claude/settings.json', 'ln -sf /tmp/x /home/u/.claude/settings.json']) {
     expect(`${c} ${shellWritesTo(c, sp)}`).toBe(`${c} true`)
   }
-  for (const c of [`grep x ${R}/hooks/gate.ts > /tmp/out`, `cat ${R}/README.md`, 'cat ~/.claude/settings.json', 'ls ~/.claude/plugins', 'echo hi > /site/a.txt',
+  // round 4: a script an interpreter runs is read, not written (its own writes are a known gap)
+  for (const c of ['python3 script.py /home/u/.claude/settings.json', `node ${R}/hooks/x.mjs`, `grep x ${R}/hooks/gate.ts > /tmp/out`, `cat ${R}/README.md`, 'cat ~/.claude/settings.json', 'ls ~/.claude/plugins', 'echo hi > /site/a.txt',
     `diff ${R}/a ${R}/b > /tmp/d.txt`]) {
     expect(`${c} ${shellWritesTo(c, sp)}`).toBe(`${c} false`)
   }
