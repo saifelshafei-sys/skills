@@ -452,10 +452,24 @@ function pushOverwrites(rest: Word[], config: string[]): boolean {
     if (/^--(?:force|mirror|prune)$/i.test(a)) return true
     if (/^-[a-zA-Z]+$/.test(a) && a.includes('f')) return true
     if (!a.startsWith('-') && a.startsWith('+')) return true
-    if (w.dynamic || /[{}]/.test(a)) return true
+    // An option built from a variable or braces could be any flag.
+    if (a.startsWith('-') && (w.dynamic || /[{}]/.test(a))) return true
   }
   return false
 }
+
+/**
+ * Whether a push names a branch computed at run time (`"$BRANCH"`,
+ * `$(git branch --show-current)`, `{main,dev}`), which could expand to a
+ * `+branch`: not refused, but an agent asks.
+ */
+function pushComputed(rest: Word[]): boolean {
+  return rest.some(w => !w.text.startsWith('-') && (w.dynamic || /[{}]/.test(w.text)))
+}
+
+/** What an agent is told when a push names a computed branch. */
+export const COMPUTED_PUSH = 'This push uses a computed branch name, which could be a force push (a +branch). ' +
+  'Write the branch name out, e.g. `git push -u origin feature/hero`, or ask the person.'
 
 /** Whether a `git push` deletes a remote branch: `--delete`, `-d`, or a `:branch` refspec. */
 function pushDeletes(rest: Word[]): boolean {
@@ -725,6 +739,7 @@ export function shellNeedsPerson(command: string): string | undefined {
       const { sub, rest } = gitSub(args)
       if (sub === 'update-ref' && rest.some(a => /^refs\/heads\//.test(a.text))) return 'moves a branch ref (git update-ref)'
       if (sub === 'push' && pushDeletes(rest)) return "deletes a remote branch. Deleting a remote branch needs the person's OK"
+      if (sub === 'push' && pushComputed(rest)) return `pushes to a computed branch name. ${COMPUTED_PUSH.replace(/\.$/, '')}`
 
       if (sub === 'branch' && rest.some(a => /^-[a-zA-Z]*[DfMC]|^--(?:force|delete)$/.test(a.text)) &&
         rest.some(a => /^(?:main|master|origin\/main|origin\/master)$/.test(a.text))) return 'force-moves or deletes main or master (git branch)'

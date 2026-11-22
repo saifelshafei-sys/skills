@@ -136,7 +136,7 @@ Your main session is the Chief of Staff. These things make it delegate:
   `/delegate off` lifts.
 - **Role limits**, from the floor and each agent's frontmatter. `reverse-engineer` and `creative-director`
   are `md-only`; `web-designer` is `no-scripts`. Write limits hold inside the project only (the session's
-  folder and below), never in temp folders (`/tmp`, `$TMPDIR`, Claude's scratchpad), so `curl -o /tmp/app.js`
+  folder and below, even when that folder is itself under a temp folder), never in other temp folders (`/tmp`, `$TMPDIR`, Claude's scratchpad), so `curl -o /tmp/app.js`
   works for every role; `reverse-engineer` may also write any file into the project's `research/` and
   `captures/`. The same limits apply to MCP tools whose names write,
   download, export, generate, convert or extract files, through every argument that looks like a path,
@@ -151,7 +151,8 @@ Your main session is the Chief of Staff. These things make it delegate:
   not, an argument built from a variable or substitution or holding braces, `git send-pack --force`,
   `git -c remote.*.push=+...` or `remote.*.mirror=true`); only `devops-engineer` may
   `git push --force-with-lease`. Deleting a remote branch (`git push --delete`, `-d`, `:branch`) is not
-  refused: an agent asks you ("Deleting a remote branch needs the person's OK."). These checks run
+  refused: an agent asks you ("Deleting a remote branch needs the person's OK."). A push to a computed branch name (`git push -u origin "$(git branch --show-current)"`, `"$BRANCH"`)
+  also asks, since it could expand to a `+branch`; an explicit `-f`, `--force` or `+branch` stays refused. These checks run
   on Bash, Monitor, PowerShell and any other tool with a `command`, and on the command fields (`command`,
   `cmd`, `input`, `script`, `code`) of MCP tools that run processes, shells or code. Leaked keys are
   reported with their location and rotation steps for you to act on. A blocked agent is told who the work
@@ -257,7 +258,9 @@ and `/team` loosen a setting (`/delegate off`, `/delegate credits free`, `/team 
 that turns a department on) only when you type it at the prompt or send it through Remote Control: not
 from `claude -p`, a plugin, a schedule or another session. Tightening works from anywhere. A Claude Code
 session started from inside another one (Claude Code sets `CLAUDECODE` or `CLAUDE_CODE_CHILD_SESSION` for
-what it runs) is held to agent limits throughout, its main session included, and cannot loosen anything.
+what it runs) is held to agent limits throughout: its main session keeps the no-edit rule even with `/delegate off`,
+its agents write only `.md` and never deploy unless they are one of the twelve shipped roles (which keep
+their own limits, never looser), and nothing can be loosened.
 
 **When a guardrail refuses something legitimate**, every agent and the Chief of Staff are told to stop and
 report the exact refusal, and never to work around it (for example by writing the command to a script
@@ -279,7 +282,8 @@ mode plus the environment's network policy. Known ways past them, by design or n
   Code's shell is held to agent limits by `CLAUDECODE`; one whose environment has been cleaned is not.
 - **Programs named indirectly**: shell aliases (`alias p='git push -f'`), functions, `gh alias`, git
   aliases (`git -c alias.p="push --force" p`, aliases in git config), brace expansion of the command word
-  (`{git,push,-f}`), `BASH_ENV`. (A variable or substitution as the command name asks.)
+  (`{git,push,-f}`), `BASH_ENV`. (A variable or substitution as the command name asks; so does a push to a
+  computed branch name such as `"$BRANCH"`.)
 - **Encoded or indirect commands**: base64 into `sh`, text piped into a shell (`echo cmd | sh`,
   `bash -s`), process substitution (`bash <(...)`, `source <(...)`), `xargs` fed the command, `awk`'s
   `system()`, `make -f` from a here-string, `ssh host 'cmd'`, `python -c "os.system(...)"`,

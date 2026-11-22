@@ -68,8 +68,9 @@ test('N4: a Claude Code session started inside another is held to agent limits, 
   on('ui.status', () => ({ value: undefined }))
   on('tool.call', () => ({ result: {} }))
   on('tool.check', () => ({ decision: 'allow' }))
-  expect(String(deny(await $.tool.call({ tool: 'Write', file_path: '/site/a.ts', content: 'x' } as never)))).toContain('writes only .md')
-  expect(String(deny(await $.tool.call({ tool: 'Write', file_path: '/home/u/.claude/settings.json', content: 'x' } as never)))).toContain('Not allowed')
+  // the nested main loop keeps the no-edit rule, even with /delegate off
+  expect(String(deny(await $.tool.call({ tool: 'Write', file_path: '/site/a.ts', content: 'x' } as never)))).toContain('Chief of Staff rule')
+  expect(String(deny(await $.tool.call({ tool: 'Write', file_path: '/home/u/.claude/settings.json', content: 'x' } as never)))).toContain('Chief of Staff rule')
   expect((await $.tool.check({ tool: 'mcp__Gmail__send_message', input: {} } as never)).decision).toBe('deny')
   expect((await $.tool.check({ tool: 'Bash', input: { command: 'claude -p hi' } } as never)).decision).toBe('deny')
   expect(JSON.stringify(await $.command.run({ origin: { kind: 'composer' }, command: 'delegate', args: 'off' } as never))).toContain('Only the person can loosen')
@@ -120,8 +121,7 @@ test('N2/N5: MCP path keys (spaces, file://) and folders are checked like file p
 })
 
 test('N3: the cheap tokenizer fixes', () => {
-  for (const c of ["git push $'-f' origin main", "git push $'\\x2df' origin main", 'git push $"--force" origin main', 'git push origin $BRANCH', 'git push origin "$(git branch --show-current)"',
-    'git push -f{,} origin', 'git push origin {main,dev}', 'time -p git push -f', "bash <<< 'git push -f origin main'", "bash <<E'OF'\ngit push -f\nEOF",
+  for (const c of ["git push $'-f' origin main", "git push $'\\x2df' origin main", 'git push $"--force" origin main', 'git push -f{,} origin', 'git push -${X:-f} origin', 'time -p git push -f', "bash <<< 'git push -f origin main'", "bash <<E'OF'\ngit push -f\nEOF",
     'bash <<"EOF"\ngit push -f\nEOF', 'git send-pack --force origin main', 'git send-pack origin +main', "git -c remote.origin.push='+refs/heads/*:refs/heads/*' push origin",
     'git -c remote.origin.mirror=true push origin', "su -c 'git push -f' me", "runuser -u me -- git push -f", "flock /tmp/l git push -f", "flock /tmp/l -c 'git push -f'",
     'taskset 0x1 git push -f', 'taskset -c 0,1 git push -f', 'chrt -f 10 git push -f', "script -c 'git push -f' /dev/null", "script -qc 'git push -f' /dev/null",
@@ -157,4 +157,62 @@ test('F: small allow-list items', () => {
     'mcp__scrapling__browser_actions']) {
     expect(`${t} ${checkMcp(t).verdict}`).toBe(`${t} ask`)
   }
+})
+
+test('last batch 1: a computed push branch asks with its own message; explicit force stays refused', async ($, on) => {
+  serve(on)
+  memoryStore(on)
+  agents(on, { f: 'chief-of-staff:frontend-developer', d: 'chief-of-staff:devops-engineer' })
+  on('tool.call', () => ({ result: {} }))
+  on('tool.check', () => ({ decision: 'allow' }))
+  const msg = 'This push uses a computed branch name, which could be a force push (a +branch). Write the branch name out, e.g. `git push -u origin feature/hero`, or ask the person'
+  for (const c of ['git push origin "$BRANCH"', 'git push -u origin "$(git branch --show-current)"', 'git push -u origin $(git rev-parse --abbrev-ref HEAD)',
+    'git push origin "${BRANCH}"', 'git push origin "$GITHUB_HEAD_REF"', 'git push origin "$(git describe --tags)"', 'git push origin {main,dev}',
+    'git push origin "$(echo +main)"']) {
+    expect(`${c} ${rewritesHistory(c)}`).toBe(`${c} false`)
+    for (const id of ['f', 'd']) {
+      expect(deny(await $.tool.call({ tool: 'Bash', command: c, agentId: id } as never))).toBeUndefined()
+      const asked = await $.tool.check({ tool: 'Bash', input: { command: c }, agentId: id, approver: 'person' } as never)
+      expect(asked.decision).toBe('ask')
+      expect(String(asked.reason)).toContain(msg)
+      expect((await $.tool.check({ tool: 'Bash', input: { command: c }, agentId: id } as never)).decision).toBe('deny')
+    }
+  }
+  for (const c of ['git push -f origin "$BRANCH"', 'git push --force origin "$(git branch --show-current)"', 'git push origin "+$BRANCH"', 'git push --mirror', 'git push --prune origin']) {
+    expect(String(deny(await $.tool.call({ tool: 'Bash', command: c, agentId: 'f' } as never)))).toContain('force push, mirror or prune')
+  }
+  expect(shellNeedsPerson('git push -u origin feature/hero')).toBeUndefined()
+})
+
+test('last batch 2: in a nested session the main loop cannot edit and an unknown agent writes only .md', async ($, on) => {
+  serve(on)
+  memoryStore(on, { delegate: false })
+  cwd(on, '/site')
+  on('env.get', (_, e) => ({ value: e.name === 'CLAUDE_CODE_CHILD_SESSION' ? '1' : e.name === 'HOME' ? '/home/u' : undefined }))
+  agents(on, { g: 'general-purpose', x: 'chief-of-staff:not-shipped', f: 'chief-of-staff:frontend-developer', w: 'chief-of-staff:web-designer' })
+  on('tool.call', () => ({ result: {} }))
+  const write = (file_path: string, agentId?: string) => $.tool.call({ tool: 'Write', file_path, content: 'x', agentId } as never).then(deny)
+  expect(String(await write('/site/src/main.ts'))).toContain('Chief of Staff rule')
+  expect(String(await write('/site/notes.txt'))).toContain('Chief of Staff rule')
+  expect(String(await write('/site/src/main.ts', 'g'))).toContain('writes only .md')
+  expect(String(await write('/site/src/main.ts', 'x'))).toContain('writes only .md')
+  expect(await write('/site/src/main.ts', 'f')).toBeUndefined() // an exact FLOOR role keeps its floor
+  expect(String(await write('/site/src/a.js', 'w'))).toContain('Role limit: web-designer') // and never anything looser
+  expect(String(deny(await $.tool.call({ tool: 'Bash', command: 'npx wrangler deploy', agentId: 'g' } as never)))).toContain('deploys')
+  for (const [c, a] of [['delegate', 'off'], ['delegate', 'credits free'], ['team', 'on all']]) {
+    expect(JSON.stringify(await $.command.run({ origin: { kind: 'composer' }, command: c, args: a } as never))).toContain('Only the person can loosen')
+  }
+})
+
+test('last batch 4: inside the project the write limit holds even when the project is under /tmp', async ($, on) => {
+  serve(on)
+  memoryStore(on)
+  cwd(on, '/tmp/work/site')
+  agents(on, { r: 'chief-of-staff:reverse-engineer' })
+  on('tool.call', () => ({ result: {} }))
+  const call = (e: Record<string, unknown>) => $.tool.call({ agentId: 'r', ...e } as never).then(deny)
+  expect(String(await call({ tool: 'Write', file_path: '/tmp/work/site/src/app.js', content: 'x' }))).toContain('Role limit: reverse-engineer')
+  expect(String(await call({ tool: 'Bash', command: 'curl -s https://x.example/a.js -o src/app.js' }))).toContain('Role limit: reverse-engineer')
+  expect(await call({ tool: 'Write', file_path: '/tmp/work/site/research/a.js', content: 'x' })).toBeUndefined()
+  expect(await call({ tool: 'Bash', command: 'curl -s https://x.example/a.js -o /tmp/other/app.js' })).toBeUndefined() // a temp path outside the project
 })

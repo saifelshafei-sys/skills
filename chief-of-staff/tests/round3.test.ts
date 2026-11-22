@@ -73,7 +73,7 @@ test('item 7: a project CLAUDE.md asks; Claude Code\'s own memory and config are
 
 test('item 8: force pushes after a substitution, --prune, and ref moves', () => {
   for (const c of ['git push origin $(git rev-parse HEAD~5):refs/heads/main --force', 'git push --prune origin', 'git push origin --all --prune',
-    'git push origin "$(echo +main)"']) {
+  ]) {
     expect(`${c} ${rewritesHistory(c)}`).toBe(`${c} true`)
   }
   for (const c of ['git update-ref refs/heads/main HEAD~3', 'git update-ref -d refs/heads/main', 'git branch -f main HEAD~3', 'git branch -D master',

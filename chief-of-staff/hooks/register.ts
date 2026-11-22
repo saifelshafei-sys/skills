@@ -163,12 +163,14 @@ export function writeLimitAt(limits: Limits, path: string, scope: Scope): string
   if (limits.writeLimit === 'none') return undefined
   const n = normalize(path, scope.home) ?? path.replace(/\\/g, '/')
   const temps = [...TEMP_DIRS, ...scope.temps].map(t => t.replace(/\\/g, '/').replace(/\/+$/, ''))
-  if (temps.some(t => t !== '' && (n === t || n.startsWith(`${t}/`)))) return undefined
+  const c = scope.cwd?.replace(/\\/g, '/').replace(/\/+$/, '')
+  const insideProject = c !== undefined && c !== '' && (!n.startsWith('/') || n === c || n.startsWith(`${c}/`))
+  // Inside the project the limit holds, even when the project itself is under a temp folder.
+  if (!insideProject && temps.some(t => t !== '' && (n === t || n.startsWith(`${t}/`)))) return undefined
   let rel = n
-  if (scope.cwd && n.startsWith('/')) {
-    const c = scope.cwd.replace(/\\/g, '/').replace(/\/+$/, '')
-    if (n !== c && !n.startsWith(`${c}/`)) return undefined
-    rel = n.slice(c.length + 1)
+  if (c && n.startsWith('/')) {
+    if (!insideProject) return undefined
+    rel = n === c ? '' : n.slice(c.length + 1)
   }
   const top = rel.replace(/^\.\//, '').split('/')[0] ?? ''
   if (!rel.startsWith('/') && limits.writeDirs.includes(top)) return undefined
@@ -715,9 +717,11 @@ export const register: Register = on => {
     // Commands: Bash, Monitor, PowerShell (any tool with a string `command`), and an MCP process tool's command fields.
     const commands = commandsOf(tool, fields)
     if (!isFile && !isSpawn && !isMcp && commands.length === 0) return next(e)
-    // A session started inside another Claude Code session is held to agent limits throughout.
-    const isAgent = e.agentId !== undefined || (await isNested($))
-    if (!isAgent && isFile && (await delegating($))) return { deny: BLOCKED(tool) }
+    // A session started inside another Claude Code session is held to agent limits throughout, and its
+    // main loop keeps the no-edit rule whatever /delegate says.
+    const nested = await isNested($)
+    const isAgent = e.agentId !== undefined || nested
+    if (e.agentId === undefined && isFile && (nested || (await delegating($)))) return { deny: BLOCKED(tool) }
 
     // A command too long or too complex to read: the Chief of Staff's is refused; an agent's goes to the person (tool.check).
     const readable = commands.filter(c => !unreadable(c))
@@ -739,7 +743,10 @@ export const register: Register = on => {
       return why ? { deny: why } : next(e)
     }
 
-    const limits = limitsFor(await typeOf($, e.agentId), team)
+    const type = await typeOf($, e.agentId)
+    // In a nested session only an exact FLOOR role keeps its own limits; every other agent writes only .md and never deploys.
+    const own = ownName(type)
+    const limits = nested && !(own !== undefined && Object.hasOwn(FLOOR, own)) ? UNKNOWN : limitsFor(type, team)
     for (const c of readable) {
       const why = commandLimitWhy(limits, c, team)
       if (why) return { deny: why }
