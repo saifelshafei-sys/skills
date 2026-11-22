@@ -1,0 +1,8 @@
+{
+  "name": "graphify",
+  "version": "0.9.113",
+  "description": "Vendored copy of the graphify skill from Graphify-Labs/graphify (https://github.com/Graphify-Labs/graphify): turns code, docs, papers and images into a queryable knowledge graph. Requires the graphify CLI (uv tool install graphifyy).",
+  "homepage": "https://github.com/Graphify-Labs/graphify",
+  "repository": "https://github.com/Graphify-Labs/graphify",
+  "license": "Apache-2.0"
+}
