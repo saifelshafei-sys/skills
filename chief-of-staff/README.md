@@ -118,6 +118,8 @@ A file can make its role stricter than that, never looser.
 After adding or changing an agent file, run `node scripts/fixture.mjs` so the tests check the new file
 too (see Tests).
 
+Building a new department? Start with [REFERENCES.md](REFERENCES.md): source prompts to adapt, and how.
+
 ### departments.json
 
 Each department has `id`, `name`, a one-line `purpose`, `default` (`"on"` or `"off"`) and `rules`: the
