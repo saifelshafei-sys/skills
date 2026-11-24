@@ -32,7 +32,9 @@ export const DESIGNER_OFF_LIMITS =
   /(\.(m?js|cjs|ts|mts|cts|py|sh|bash|ps1|bat|rb|go|rs|php|toml)$)|((^|[\\/])(package(-lock)?\.json|wrangler\.[a-z]+|Dockerfile|docker-compose\.ya?ml|vercel\.json|netlify\.toml)$)|((^|[\\/])\.github[\\/])/i
 
 /**
- * The limits of the twelve shipped roles, in code so no file can loosen
+ * The limits of the shipped roles (the twelve from before 0.11, the seven
+ * Creative and Social roles from 0.11, the eight Finance and Risk roles from
+ * 0.12), in code so no file can loosen
  * them: an agent file may make its role stricter, never looser. Only a role
  * listed here with `canDeploy` may deploy, and only as the exact type
  * `chief-of-staff:<name>` with `can-deploy: true` in a clean file. A new role
@@ -52,6 +54,23 @@ export const FLOOR: Readonly<Record<string, { writeLimit: WriteLimit; canDeploy:
   'copywriter': { writeLimit: 'none', canDeploy: false },
   'marketing-strategist': { writeLimit: 'none', canDeploy: false },
   'seo-specialist': { writeLimit: 'none', canDeploy: false },
+  // 0.11: Creative and Social
+  'brand-designer': { writeLimit: 'no-scripts', canDeploy: false },
+  'graphic-designer': { writeLimit: 'md-only', canDeploy: false },
+  'video-producer': { writeLimit: 'md-only', canDeploy: false },
+  'social-strategist': { writeLimit: 'md-only', canDeploy: false },
+  'content-producer': { writeLimit: 'md-only', canDeploy: false },
+  'community-manager': { writeLimit: 'md-only', canDeploy: false },
+  'social-publisher': { writeLimit: 'md-only', canDeploy: false },
+  // 0.12: Finance and Risk, Audit & Compliance
+  'financial-analyst': { writeLimit: 'none', canDeploy: false },
+  'credit-analyst': { writeLimit: 'none', canDeploy: false },
+  'bookkeeper': { writeLimit: 'none', canDeploy: false },
+  'risk-manager': { writeLimit: 'md-only', canDeploy: false },
+  'controls-analyst': { writeLimit: 'md-only', canDeploy: false, writeDirs: ['controls'] },
+  'internal-auditor': { writeLimit: 'md-only', canDeploy: false, writeDirs: ['audit'] },
+  'model-risk-validator': { writeLimit: 'md-only', canDeploy: false, writeDirs: ['validation'] },
+  'compliance-officer': { writeLimit: 'md-only', canDeploy: false },
 }
 
 /** Scrapling (or any) settings that get past bot protection: always refused. */
@@ -121,7 +140,7 @@ export function limitsFor(type: string | undefined, team: Team): Limits {
     canDeploy: floor?.canDeploy === true && agent.canDeploy,
     hint: agent.limitHint,
     isBroken: false,
-    // Folders the file opens, as far as the FLOOR allows them (reverse-engineer's research/ and captures/).
+    // Folders the file opens, as far as the FLOOR allows them (reverse-engineer's research/ and captures/, the auditors' and validators' own folders).
     writeDirs: agent.writeDirs.filter(d => floor?.writeDirs?.includes(d)),
   }
 }

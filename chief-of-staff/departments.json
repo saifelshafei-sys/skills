@@ -70,16 +70,25 @@
     {
       "id": "finance",
       "name": "Finance",
-      "purpose": "budgets, invoices, pricing and financial reports",
-      "default": "off",
-      "rules": []
+      "purpose": "financial models, valuation, credit analysis and the books",
+      "default": "on",
+      "rules": [
+        "Any model used for a decision goes to model-risk-validator before it is relied on.",
+        "Credit ratings go credit-analyst (PROPOSED rating), then risk-manager (sign-off note), then the person decides.",
+        "Bookkeeping goes bookkeeper (prepares), then controls-analyst (reviews), then the person.",
+        "Nothing is posted, paid or filed without the person: finance agents draft and report back."
+      ]
     },
     {
       "id": "risk-audit-compliance",
       "name": "Risk, Audit & Compliance",
-      "purpose": "risk registers, audits, policies and regulatory checks",
-      "default": "off",
-      "rules": []
+      "purpose": "risk, controls, internal audit, model validation and compliance",
+      "default": "on",
+      "rules": [
+        "The maker never checks its own work.",
+        "internal-auditor and model-risk-validator are independent: never assign them to review work they helped produce, and never let them fix what they find; the fix goes back to the maker.",
+        "Findings use severity ratings."
+      ]
     },
     {
       "id": "legal",
