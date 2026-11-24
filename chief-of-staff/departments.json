@@ -29,7 +29,8 @@
         "web-designer produces the design only: layout, styles, design tokens, visual specs. It does not write JavaScript, Python, build scripts or deploy steps.",
         "web-designer is blocked from writing scripts, build and config files (.js, .ts, .py, wrangler, package.json); route that work to the developers or DevOps from the start.",
         "New pages, redesigns, campaigns and brand work start with creative-director (direction), then copywriter and web-designer work from its brief, then creative-director reviews their output; only approved work goes to frontend-developer.",
-        "creative-director advises and approves; it writes only creative-brief.md and review notes, never code or page files."
+        "creative-director advises and approves; it writes only creative-brief.md and review notes, never code or page files.",
+        "brand-designer sets the brand first (brand/guidelines.md); graphic-designer and video-producer follow brand/guidelines.md. Visuals go to creative-director before they are used."
       ]
     },
     {
@@ -46,7 +47,11 @@
       "name": "Social",
       "purpose": "social media posts, replies and community",
       "default": "on",
-      "rules": []
+      "rules": [
+        "Social work runs social-strategist (plan), then content-producer (drafts), then graphic-designer or video-producer (visuals), then creative-director (review), then the person approves, then social-publisher (schedule or publish).",
+        "Nothing is posted, commented, liked or scheduled without the person's OK. social-publisher acts only on an approval you pass in its brief, one item at a time, by draft id.",
+        "LinkedIn goes through Taplio. For other platforms (Instagram, TikTok, X, YouTube) the team drafts and the person posts manually."
+      ]
     },
     {
       "id": "sales",
