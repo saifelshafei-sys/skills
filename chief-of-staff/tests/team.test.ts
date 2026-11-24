@@ -44,7 +44,7 @@ const ROUTING_BEFORE = [
   'Never let an agent deploy, change DNS, delete data, or spend money without the person confirming first.',
 ]
 
-const DEFAULT_ON = ['product-engineering', 'security', 'creative', 'marketing-pr', 'social']
+const DEFAULT_ON = ['product-engineering', 'security', 'creative', 'marketing-pr', 'social', 'finance', 'risk-audit-compliance']
 const DEPARTMENT_IDS = ['product-engineering', 'security', 'creative', 'marketing-pr', 'social', 'sales', 'data-analytics',
   'finance', 'risk-audit-compliance', 'legal', 'operations-people', 'strategy-research']
 
@@ -78,7 +78,7 @@ test('every agent file declares its department and settings; nothing is wrong wi
   expect(TEAM.departments.map(d => d.id)).toEqual(DEPARTMENT_IDS)
   expect(TEAM.departments.filter(d => d.isDefaultOn).map(d => d.id)).toEqual(DEFAULT_ON)
   expect(FALLBACK_DEPARTMENTS.map(d => `${d.id}:${d.isDefaultOn}`)).toEqual(TEAM.departments.map(d => `${d.id}:${d.isDefaultOn}`))
-  expect(TEAM.agents.length).toBe(19)
+  expect(TEAM.agents.length).toBe(27)
   for (const [name, does] of Object.entries(DOES_BEFORE)) expect(`${name}: ${TEAM.agents.find(a => a.name === name)?.does}`).toBe(`${name}: ${does}`)
   const where = Object.fromEntries(TEAM.agents.map(a => [a.name, a.department]))
   expect(where).toEqual({
@@ -87,16 +87,21 @@ test('every agent file declares its department and settings; nothing is wrong wi
     'creative-director': 'creative', 'web-designer': 'creative', 'copywriter': 'creative', 'marketing-strategist': 'marketing-pr', 'seo-specialist': 'marketing-pr',
     'brand-designer': 'creative', 'graphic-designer': 'creative', 'video-producer': 'creative', 'social-strategist': 'social',
     'content-producer': 'social', 'community-manager': 'social', 'social-publisher': 'social',
+    'financial-analyst': 'finance', 'credit-analyst': 'finance', 'bookkeeper': 'finance', 'risk-manager': 'risk-audit-compliance',
+    'controls-analyst': 'risk-audit-compliance', 'internal-auditor': 'risk-audit-compliance', 'model-risk-validator': 'risk-audit-compliance',
+    'compliance-officer': 'risk-audit-compliance',
   })
   const limits = Object.fromEntries(TEAM.agents.filter(a => a.writeLimit !== 'none').map(a => [a.name, a.writeLimit]))
   expect(limits).toEqual({ 'reverse-engineer': 'md-only', 'creative-director': 'md-only', 'web-designer': 'no-scripts', 'brand-designer': 'no-scripts',
     'graphic-designer': 'md-only', 'video-producer': 'md-only', 'social-strategist': 'md-only', 'content-producer': 'md-only', 'community-manager': 'md-only',
-    'social-publisher': 'md-only' })
+    'social-publisher': 'md-only', 'risk-manager': 'md-only', 'controls-analyst': 'md-only', 'internal-auditor': 'md-only',
+    'model-risk-validator': 'md-only', 'compliance-officer': 'md-only' })
   expect(TEAM.agents.filter(a => a.canDeploy).map(a => a.name)).toEqual(['devops-engineer'])
-  // the hand-picked order of 0.9 within each department, with the 0.11 roles slotted in by order:
+  // the hand-picked order of 0.9 within each department, with the 0.11 and 0.12 roles slotted in by order:
   expect(TEAM.agents.map(a => a.name)).toEqual(['reverse-engineer', 'frontend-developer', 'backend-developer', 'qa-tester', 'devops-engineer',
     'security-reviewer', 'security-engineer', 'creative-director', 'brand-designer', 'web-designer', 'copywriter', 'graphic-designer', 'video-producer',
-    'marketing-strategist', 'seo-specialist', 'social-strategist', 'content-producer', 'community-manager', 'social-publisher'])
+    'marketing-strategist', 'seo-specialist', 'social-strategist', 'content-producer', 'community-manager', 'social-publisher',
+    'financial-analyst', 'credit-analyst', 'bookkeeper', 'risk-manager', 'controls-analyst', 'internal-auditor', 'model-risk-validator', 'compliance-officer'])
   // the files keep what Claude Code reads
   expect(parseFrontmatter(FILES['agents/web-designer.md'] as string).skills).toBe('taste-skill:design-taste-frontend, design-taste-frontend')
   expect(parseFrontmatter(FILES['agents/security-reviewer.md'] as string).tools).toBe('Read, Grep, Glob, Bash, WebSearch, WebFetch')

@@ -20,7 +20,7 @@ is enforced.
 ## Departments
 
 The plan is a 50-agent organisation in twelve departments, added over several releases. All twelve exist
-now; the five marked on are on by default. Turn them on and off with `/team`.
+now; the seven marked on are on by default. Turn them on and off with `/team`.
 
 | Department (`id`) | Default | Agents today |
 |---|---|---|
@@ -31,8 +31,8 @@ now; the five marked on are on by default. Turn them on and off with `/team`.
 | Social (`social`) | on | `social-strategist`, `content-producer`, `community-manager`, `social-publisher` |
 | Sales (`sales`) | off | none yet |
 | Data & Analytics (`data-analytics`) | off | none yet |
-| Finance (`finance`) | off | none yet |
-| Risk, Audit & Compliance (`risk-audit-compliance`) | off | none yet |
+| Finance (`finance`) | on | `financial-analyst`, `credit-analyst`, `bookkeeper` |
+| Risk, Audit & Compliance (`risk-audit-compliance`) | on | `risk-manager`, `controls-analyst`, `internal-auditor`, `model-risk-validator`, `compliance-officer` |
 | Legal (`legal`) | off | none yet |
 | Operations & People (`operations-people`) | off | none yet |
 | Strategy & Research (`strategy-research`) | off | none yet |
@@ -58,6 +58,14 @@ now; the five marked on are on by default. Turn them on and off with `/team`.
 | `content-producer` | Posts, hooks, scripts, captions, repurposing; LinkedIn posts as Taplio drafts, never scheduled or published |
 | `community-manager` | Finds posts to comment on and comments to answer; drafts comments in Taplio; never posts, likes or connects |
 | `social-publisher` | The only role with Taplio schedule, publish and commit-comment tools; acts only on an approval in its brief, one item at a time |
+| `financial-analyst` | Three-statement models, DCF and comps valuation, forecasts, variance and scenario analysis; models used for decisions go to `model-risk-validator` |
+| `credit-analyst` | Credit memos, spreading, leverage, coverage and liquidity ratios, debt capacity, covenant tests, a PROPOSED rating for `risk-manager` to sign off |
+| `bookkeeper` | Reconciliations, journal entry drafts, ledger clean-up, close checklists from your exports; `controls-analyst` reviews; never posts or pays |
+| `risk-manager` | Risk register, appetite and limits, inherent and residual assessments; signs off PROPOSED ratings (approve, approve with conditions, decline); writes only `.md` |
+| `controls-analyst` | Control matrix, design and operating-effectiveness tests, data-integrity checks; writes `.md` and anything under `controls/` |
+| `internal-auditor` | Independent audits with findings (condition, criteria, cause, effect, recommendation) and severity; never audits its own work or edits what it audits; writes `.md` and anything under `audit/` |
+| `model-risk-validator` | Independent validation of financial, statistical, AI and LLM models (SR 11-7 / PRA SS1/23 style), rating and conditions of use; never edits the model; writes `.md` and anything under `validation/` |
+| `compliance-officer` | Regulations mapped to obligations and controls, checklists, gap analyses, citing the section; not legal advice; writes only `.md` |
 
 (The agent-board plugin still groups agents by the words in their names, so its columns are not these
 departments yet.)
@@ -80,6 +88,28 @@ were adapted and shortened from [agency-agents](https://github.com/msitarzewski/
 Engineer, Carousel Growth Engine, Short-Video Editing Coach, Social Media Strategist, Content Creator,
 LinkedIn Content Creator, Twitter Engager, Reddit Community Builder, Multi-Platform Publisher, Paid Social
 Strategist and Ad Creative Strategist. See [REFERENCES.md](REFERENCES.md).
+
+### Finance and Risk: drafts, makers and checkers
+
+Every Finance and Risk output is a draft for your review and says so in its first line, with its
+assumptions, sources and limits; none of it is investment, legal, tax or accounting advice. A figure that
+is not in your data or a cited source is written `[MISSING: ...]`, never made up. Source files are never
+overwritten (the agents work on copies such as `<name>.working.xlsx`), and no agent moves money, posts to
+an accounting or banking system, files with a regulator or emails anyone: they draft and report back. The
+roles have no connected (MCP) tools at all.
+
+The work runs maker then checker: a model used for a decision goes `financial-analyst` then
+`model-risk-validator`; a rating goes `credit-analyst` (PROPOSED) then `risk-manager` (sign-off note) then
+you; bookkeeping goes `bookkeeper` then `controls-analyst`, whose work goes to `internal-auditor`.
+`internal-auditor` and `model-risk-validator` are independent: they are never assigned to review work they
+helped produce and never fix what they find. They have no Edit tool, and their write limit (`.md`, plus
+their own `audit/` or `validation/` folder for workpapers and back-test scripts) is in `FLOOR`, so they
+cannot write the model or code they review.
+
+`financial-analyst`, `credit-analyst` and `bookkeeper` were adapted and shortened from agency-agents'
+Financial Analyst, FP&A Analyst and Bookkeeper & Controller; `controls-analyst` and `compliance-officer`
+draw on its Compliance Auditor and Legal Compliance Checker (MIT, the same commit `8ae6164` as above).
+`risk-manager`, `internal-auditor` and `model-risk-validator` were written for this plugin.
 
 ### /team
 
@@ -121,8 +151,8 @@ You are the team's social media manager. ...
 | `department` | an `id` from `departments.json` | Where the agent is listed and which `/team` switch controls it. Missing or unknown: the agent **cannot be assigned** until the file is fixed, and `/team` lists it |
 | `does` | one line | What the Chief of Staff reads about the role. Missing: the description's first sentence (a folded `description: >` block is read too). A file with neither is a problem |
 | `order` | a whole number | Where the agent sits in its department's list, lowest first (the shipped roles use 10, 20, ...). Without it, after the numbered ones, by name |
-| `write-limit` | `none`, `no-scripts`, `md-only` | `md-only`: only `.md` reports and notes. `no-scripts`: no scripts, build or deploy config (`.js`, `.ts`, `.py`, `.sh`, `wrangler.*`, `package.json`, CI files...); styles, HTML and component markup are fine. It can only **tighten**: the shipped roles keep the limits in the plugin's code (see below) whatever their file says. **A new role must state it**: a role that is not one of the twelve in `FLOOR` and states no `write-limit` writes only `.md`. The seven roles added in 0.11 are not in `FLOOR`: their limits come from their files alone |
-| `write-dirs` | project folders, comma-separated | Folders at the top of the project this role may write any file into despite its write limit. Honoured only as far as `FLOOR` in the code allows: today only `reverse-engineer`, for `research` and `captures` |
+| `write-limit` | `none`, `no-scripts`, `md-only` | `md-only`: only `.md` reports and notes. `no-scripts`: no scripts, build or deploy config (`.js`, `.ts`, `.py`, `.sh`, `wrangler.*`, `package.json`, CI files...); styles, HTML and component markup are fine. It can only **tighten**: the shipped roles keep the limits in the plugin's code (see below) whatever their file says. **A new role must state it**: a role that is not in `FLOOR` and states no `write-limit` writes only `.md` |
+| `write-dirs` | project folders, comma-separated | Folders at the top of the project this role may write any file into despite its write limit. Honoured only as far as `FLOOR` in the code allows: today `reverse-engineer` (`research`, `captures`), `controls-analyst` (`controls`), `internal-auditor` (`audit`) and `model-risk-validator` (`validation`) |
 | `limit-hint` | one line, quoted | Added to the role's denial message ("Describe the technique in your report; ...") |
 | `can-deploy` | `true` | Honoured **only** for a role the plugin's code allows to deploy (today only `devops-engineer`), and only as the exact type `chief-of-staff:<name>`. A new role gets deploy rights only by being added to `FLOOR` in `hooks/register.ts`, a code change on purpose |
 | `checked-by` | role names, comma-separated | Adds a routing line "`<role>`'s output goes to `<checker>` before it is called done" |
@@ -137,9 +167,11 @@ unknown department, `write-limit` or `can-deploy` value, a key given twice (in a
 Only regular files of up to 64 KiB are read (no links, no FIFOs). An agent of this plugin whose file is
 missing writes only `.md` and never deploys.
 
-**The floor.** `FLOOR` in `hooks/register.ts` holds the limits of the twelve roles shipped before 0.11: `web-designer`
-`no-scripts`, `reverse-engineer` and `creative-director` `md-only`, and only `devops-engineer` may deploy.
-A file can make its role stricter than that, never looser.
+**The floor.** `FLOOR` in `hooks/register.ts` holds the limits of all 27 shipped roles: `web-designer` and
+`brand-designer` `no-scripts`; `reverse-engineer`, `creative-director`, `graphic-designer`, `video-producer`,
+the four Social roles, `risk-manager`, `controls-analyst`, `internal-auditor`, `model-risk-validator` and
+`compliance-officer` `md-only` (with the `write-dirs` folders above); the rest `none`. Only
+`devops-engineer` may deploy. A file can make its role stricter than that, never looser.
 
 After adding or changing an agent file, run `node scripts/fixture.mjs` so the tests check the new file
 too (see Tests).
@@ -287,7 +319,7 @@ that turns a department on) only when you type it at the prompt or send it throu
 from `claude -p`, a plugin, a schedule or another session. Tightening works from anywhere. A Claude Code
 session started from inside another one (Claude Code sets `CLAUDECODE` or `CLAUDE_CODE_CHILD_SESSION` for
 what it runs) is held to agent limits throughout: its main session keeps the no-edit rule even with `/delegate off`,
-its agents write only `.md` and never deploy unless they are one of the twelve roles in `FLOOR` (which keep
+its agents write only `.md` and never deploy unless they are one of the roles in `FLOOR` (which keep
 their own limits, never looser), and nothing can be loosened.
 
 **When a guardrail refuses something legitimate**, every agent and the Chief of Staff are told to stop and
@@ -345,9 +377,9 @@ mode plus the environment's network policy. Known ways past them, by design or n
   allow-list errs towards asking, but a misleading name can pass. Paths are read from keys that name paths
   and from strings that look like paths; a path hidden elsewhere in an argument is not seen. MCP tools
   that read are not path-checked.
-- **The 0.11 roles' limits live in their files only.** `brand-designer`, `graphic-designer`, `video-producer` and
-  the four Social roles are not in `FLOOR`, so an edit to their agent file can loosen their write limit or
-  `tools:` list. Their publish and share calls still go through the confirm gate whatever the file says.
+- **`tools:` lives in the agent files.** `FLOOR` fixes each shipped role's write limit, write folders and
+  deploy right, but not its `tools:` list: an edit to an agent file can add tools. Publish, share, send and
+  pay calls on connected tools still go through the confirm gate whatever the file says.
 - **The confirm gate trusts Claude Code's approver**: it asks only when the engine says a person will
   answer, and refuses otherwise.
 
