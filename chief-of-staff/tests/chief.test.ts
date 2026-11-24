@@ -1,11 +1,14 @@
 import { expect, test } from 'claude-code/testing'
 
-import { bypassLimit, HISTORY_REWRITE, roleLimit, runsCommand, runsDeploy } from '../hooks/register'
+import { bypassLimit, HISTORY_REWRITE, roleLimit as limitIn, runsCommand, runsDeploy } from '../hooks/register'
+import { BASE, IN, TEAM } from './helpers'
+import { serve } from './serve'
 
-const IN = (tools: string[]) => ({ model: 'm', promptModel: 'm', surfaces: [], tools, outputStyle: null, traits: [] })
-const BASE = { sections: [{ id: 'intro', text: 'engine intro', scope: 'shared' as const }] }
+/** roleLimit reads each role's limits from the team the agent files define. */
+const roleLimit = (role: string, tool: string, path: string, command: string) => limitIn(role, tool, path, command, TEAM)
 
 test('the main session gets the Chief of Staff section', async ($, on) => {
+  serve(on)
   on('prompt.compose', () => BASE)
   const out = await $.prompt.compose(IN(['Agent', 'Read']))
   const chief = out.sections.find(s => s.id === 'chief-of-staff:chief-of-staff')
@@ -38,13 +41,19 @@ test('/delegate off turns it off', async ($, on) => {
 
   const before = await $.prompt.compose(IN(['Agent']))
   expect(before.sections.some(s => s.id === 'chief-of-staff:chief-of-staff')).toBe(true)
-  const said = await $.command.run({ command: 'delegate', args: 'off' } as never)
+  const said = await $.command.run({ origin: { kind: 'composer' }, command: 'delegate', args: 'off' } as never)
   expect(JSON.stringify(said).includes('is off')).toBe(true)
-  const out = await $.prompt.compose(IN(['Agent']))
-  expect(out.sections.some(s => s.id === 'chief-of-staff:chief-of-staff')).toBe(false)
+  // 0.10: the team prompt stays; only the no-edit wording goes
+  const out = (await $.prompt.compose(IN(['Agent']))).sections.find(s => s.id === 'chief-of-staff:chief-of-staff')?.text ?? ''
+  expect(out.includes('are blocked for you')).toBe(false)
+  expect(out.includes('turned delegation off')).toBe(true)
+  expect(out.includes('Routing rules')).toBe(true)
 })
 
 test('the Chief of Staff cannot edit files; an agent can', async ($, on) => {
+  // 0.10: an agent whose type cannot be told gets the tightest limits, so the agent is named here.
+  serve(on)
+  on('agent.list', () => ({ value: [{ id: 'a1', type: 'general-purpose', description: '', status: 'running' } as never] }))
   on('tool.call', () => ({ result: {} }))
   const chief = await $.tool.call({ tool: 'Edit', file_path: '/a.ts', old_string: 'a', new_string: 'b' } as never)
   expect(String((chief as { deny?: string }).deny).includes('Chief of Staff rule')).toBe(true)
@@ -68,7 +77,7 @@ test('/delegate off lets the Chief of Staff edit again', async ($, on) => {
   on('command.register', () => ({ value: { command: 'delegate' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  await $.command.run({ command: 'delegate', args: 'off' } as never)
+  await $.command.run({ origin: { kind: 'composer' }, command: 'delegate', args: 'off' } as never)
   const chief = await $.tool.call({ tool: 'Write', file_path: '/a.ts', content: 'x' } as never)
   expect((chief as { deny?: string }).deny).toBeUndefined()
 })
@@ -136,7 +145,8 @@ test('history limit: rewriting git history or force pushing is blocked for every
 })
 
 test('a security-engineer agent is refused a force push through the hook', async ($, on) => {
-  on('agent.list', () => ({ value: [{ id: 's1', type: 'chief-of-staff:security-engineer', description: '', status: 'running' }] }))
+  serve(on)
+  on('agent.list', () => ({ value: [{ id: 's1', type: 'chief-of-staff:security-engineer', description: '', status: 'running' } as never] }))
   on('tool.call', () => ({ result: {} }))
   const push = await $.tool.call({ tool: 'Bash', command: 'git push --force origin main', agentId: 's1' } as never)
   expect(String((push as { deny?: string }).deny)).toContain("Rewriting git history is the person's call")
@@ -147,9 +157,10 @@ test('a security-engineer agent is refused a force push through the hook', async
 })
 
 test('a web-designer agent is refused a .js file; a frontend-developer is not', async ($, on) => {
+  serve(on)
   on('agent.list', () => ({ value: [
-    { id: 'd1', type: 'chief-of-staff:web-designer', description: '', status: 'running' },
-    { id: 'f1', type: 'chief-of-staff:frontend-developer', description: '', status: 'running' },
+    { id: 'd1', type: 'chief-of-staff:web-designer', description: '', status: 'running' } as never,
+    { id: 'f1', type: 'chief-of-staff:frontend-developer', description: '', status: 'running' } as never,
   ] }))
   on('tool.call', () => ({ result: {} }))
   const designer = await $.tool.call({ tool: 'Write', file_path: '/site/contrast.js', content: 'x', agentId: 'd1' } as never)
