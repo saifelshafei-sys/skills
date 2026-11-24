@@ -78,20 +78,25 @@ test('every agent file declares its department and settings; nothing is wrong wi
   expect(TEAM.departments.map(d => d.id)).toEqual(DEPARTMENT_IDS)
   expect(TEAM.departments.filter(d => d.isDefaultOn).map(d => d.id)).toEqual(DEFAULT_ON)
   expect(FALLBACK_DEPARTMENTS.map(d => `${d.id}:${d.isDefaultOn}`)).toEqual(TEAM.departments.map(d => `${d.id}:${d.isDefaultOn}`))
-  expect(TEAM.agents.length).toBe(12)
+  expect(TEAM.agents.length).toBe(19)
   for (const [name, does] of Object.entries(DOES_BEFORE)) expect(`${name}: ${TEAM.agents.find(a => a.name === name)?.does}`).toBe(`${name}: ${does}`)
   const where = Object.fromEntries(TEAM.agents.map(a => [a.name, a.department]))
   expect(where).toEqual({
     'reverse-engineer': 'product-engineering', 'frontend-developer': 'product-engineering', 'backend-developer': 'product-engineering',
     'qa-tester': 'product-engineering', 'devops-engineer': 'product-engineering', 'security-reviewer': 'security', 'security-engineer': 'security',
     'creative-director': 'creative', 'web-designer': 'creative', 'copywriter': 'creative', 'marketing-strategist': 'marketing-pr', 'seo-specialist': 'marketing-pr',
+    'brand-designer': 'creative', 'graphic-designer': 'creative', 'video-producer': 'creative', 'social-strategist': 'social',
+    'content-producer': 'social', 'community-manager': 'social', 'social-publisher': 'social',
   })
   const limits = Object.fromEntries(TEAM.agents.filter(a => a.writeLimit !== 'none').map(a => [a.name, a.writeLimit]))
-  expect(limits).toEqual({ 'reverse-engineer': 'md-only', 'creative-director': 'md-only', 'web-designer': 'no-scripts' })
+  expect(limits).toEqual({ 'reverse-engineer': 'md-only', 'creative-director': 'md-only', 'web-designer': 'no-scripts', 'brand-designer': 'no-scripts',
+    'graphic-designer': 'md-only', 'video-producer': 'md-only', 'social-strategist': 'md-only', 'content-producer': 'md-only', 'community-manager': 'md-only',
+    'social-publisher': 'md-only' })
   expect(TEAM.agents.filter(a => a.canDeploy).map(a => a.name)).toEqual(['devops-engineer'])
-  // the hand-picked order of 0.9 within each department
+  // the hand-picked order of 0.9 within each department, with the 0.11 roles slotted in by order:
   expect(TEAM.agents.map(a => a.name)).toEqual(['reverse-engineer', 'frontend-developer', 'backend-developer', 'qa-tester', 'devops-engineer',
-    'security-reviewer', 'security-engineer', 'creative-director', 'web-designer', 'copywriter', 'marketing-strategist', 'seo-specialist'])
+    'security-reviewer', 'security-engineer', 'creative-director', 'brand-designer', 'web-designer', 'copywriter', 'graphic-designer', 'video-producer',
+    'marketing-strategist', 'seo-specialist', 'social-strategist', 'content-producer', 'community-manager', 'social-publisher'])
   // the files keep what Claude Code reads
   expect(parseFrontmatter(FILES['agents/web-designer.md'] as string).skills).toBe('taste-skill:design-taste-frontend, design-taste-frontend')
   expect(parseFrontmatter(FILES['agents/security-reviewer.md'] as string).tools).toBe('Read, Grep, Glob, Bash, WebSearch, WebFetch')
@@ -124,8 +129,9 @@ test('the generated prompt groups the team by department and keeps every routing
   expect(at('- chief-of-staff:creative-director') < at('- chief-of-staff:web-designer')).toBe(true)
   expect(at('- chief-of-staff:copywriter') < at('Marketing & PR (')).toBe(true)
   expect(at('Marketing & PR (') < at('- chief-of-staff:marketing-strategist')).toBe(true)
-  // Social is on but has no agents: no header; the departments that are off are named with the command
-  expect(text.includes('Social (')).toBe(false)
+  // Social has agents since 0.11: its header follows Marketing & PR; the departments that are off are named with the command
+  expect(at('- chief-of-staff:seo-specialist') < at('Social (')).toBe(true)
+  expect(at('Social (') < at('- chief-of-staff:social-strategist')).toBe(true)
   expect(text.includes('Sales (turn on with /team on sales)')).toBe(true)
   expect(text.includes('Strategy & Research (turn on with /team on strategy-research)')).toBe(true)
   expect(text.includes('/team on social')).toBe(false)
@@ -197,7 +203,7 @@ test('/team shows the departments; /team on, off and reset change them from the 
   const shown = JSON.stringify(await $.command.run({ origin: { kind: 'composer' }, command: 'team', args: '' } as never))
   expect(shown).toContain('Product & Engineering (product-engineering): on. reverse-engineer, frontend-developer, backend-developer, qa-tester, devops-engineer')
   expect(shown).toContain('Sales (sales): off. No agents yet.')
-  expect(shown).toContain('Social (social): on. No agents yet.')
+  expect(shown).toContain('Social (social): on. social-strategist, content-producer, community-manager, social-publisher')
 
   const off = JSON.stringify(await $.command.run({ origin: { kind: 'composer' }, command: 'team', args: 'off creative' } as never))
   expect(off).toContain('Creative: off. It applies from your next message.')

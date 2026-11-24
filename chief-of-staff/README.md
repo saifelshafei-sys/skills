@@ -26,9 +26,9 @@ now; the five marked on are on by default. Turn them on and off with `/team`.
 |---|---|---|
 | Product & Engineering (`product-engineering`) | on | `reverse-engineer`, `frontend-developer`, `backend-developer`, `qa-tester`, `devops-engineer` |
 | Security (`security`) | on | `security-reviewer`, `security-engineer` |
-| Creative (`creative`) | on | `creative-director`, `web-designer`, `copywriter` |
+| Creative (`creative`) | on | `creative-director`, `brand-designer`, `web-designer`, `copywriter`, `graphic-designer`, `video-producer` |
 | Marketing & PR (`marketing-pr`) | on | `marketing-strategist`, `seo-specialist` |
-| Social (`social`) | on | none yet |
+| Social (`social`) | on | `social-strategist`, `content-producer`, `community-manager`, `social-publisher` |
 | Sales (`sales`) | off | none yet |
 | Data & Analytics (`data-analytics`) | off | none yet |
 | Finance (`finance`) | off | none yet |
@@ -51,9 +51,35 @@ now; the five marked on are on by default. Turn them on and off with `/team`.
 | `copywriter` | Every word on the site |
 | `seo-specialist` | Keywords, metadata, sitemap, structured data |
 | `devops-engineer` | Hosting, CI, env vars, release checks; never deploys without your OK |
+| `brand-designer` | Brand identity, logo direction, colour and type system, `brand/guidelines.md`; checks visuals are on-brand (Canva) |
+| `graphic-designer` | Social graphics, carousels, thumbnails, simple print in Canva or Higgsfield; writes only `.md` briefs; asks before sharing or publishing |
+| `video-producer` | Short-form video, storyboards, voiceover with Higgsfield generation only (no GPU rental, publishing or ads); writes only `.md` |
+| `social-strategist` | Platform plan, content pillars, posting calendar, what to stop; reads Taplio analytics only |
+| `content-producer` | Posts, hooks, scripts, captions, repurposing; LinkedIn posts as Taplio drafts, never scheduled or published |
+| `community-manager` | Finds posts to comment on and comments to answer; drafts comments in Taplio; never posts, likes or connects |
+| `social-publisher` | The only role with Taplio schedule, publish and commit-comment tools; acts only on an approval in its brief, one item at a time |
 
 (The agent-board plugin still groups agents by the words in their names, so its columns are not these
 departments yet.)
+
+### Social: nothing goes out without you
+
+Social work runs `social-strategist` (plan), `content-producer` (drafts), `graphic-designer` or
+`video-producer` (visuals), `creative-director` (review), then you approve, then `social-publisher`
+schedules or publishes that one item by its draft id. LinkedIn goes through
+[Taplio](https://taplio.com)'s MCP tools; for Instagram, TikTok, X and YouTube the team drafts and you post
+by hand. Each role's `tools:` list is the first limit (Claude Code enforces it even when the hooks are not
+loaded): only `social-publisher` has `schedule_draft`, `publish_draft`, `commit_comment_draft`, `like_post`
+and `send_connection_request`, and the confirm gate asks you before each of those calls. Drafts
+(`create_draft`, `update_draft`, `create_comment_draft`) pass. Canva and Higgsfield generation is covered
+by generation credits; sharing, publishing, GPU rental and ads writes ask.
+
+The Creative roles `brand-designer`, `graphic-designer` and `video-producer`, and the four Social roles,
+were adapted and shortened from [agency-agents](https://github.com/msitarzewski/agency-agents) (MIT,
+© 2025 AgentLand Contributors, commit `8ae6164`): Brand Guardian, Visual Storyteller, Image Prompt
+Engineer, Carousel Growth Engine, Short-Video Editing Coach, Social Media Strategist, Content Creator,
+LinkedIn Content Creator, Twitter Engager, Reddit Community Builder, Multi-Platform Publisher, Paid Social
+Strategist and Ad Creative Strategist. See [REFERENCES.md](REFERENCES.md).
 
 ### /team
 
@@ -95,7 +121,7 @@ You are the team's social media manager. ...
 | `department` | an `id` from `departments.json` | Where the agent is listed and which `/team` switch controls it. Missing or unknown: the agent **cannot be assigned** until the file is fixed, and `/team` lists it |
 | `does` | one line | What the Chief of Staff reads about the role. Missing: the description's first sentence (a folded `description: >` block is read too). A file with neither is a problem |
 | `order` | a whole number | Where the agent sits in its department's list, lowest first (the shipped roles use 10, 20, ...). Without it, after the numbered ones, by name |
-| `write-limit` | `none`, `no-scripts`, `md-only` | `md-only`: only `.md` reports and notes. `no-scripts`: no scripts, build or deploy config (`.js`, `.ts`, `.py`, `.sh`, `wrangler.*`, `package.json`, CI files...); styles, HTML and component markup are fine. It can only **tighten**: the shipped roles keep the limits in the plugin's code (see below) whatever their file says. **A new role must state it**: a role that is not one of the twelve shipped ones and states no `write-limit` writes only `.md` |
+| `write-limit` | `none`, `no-scripts`, `md-only` | `md-only`: only `.md` reports and notes. `no-scripts`: no scripts, build or deploy config (`.js`, `.ts`, `.py`, `.sh`, `wrangler.*`, `package.json`, CI files...); styles, HTML and component markup are fine. It can only **tighten**: the shipped roles keep the limits in the plugin's code (see below) whatever their file says. **A new role must state it**: a role that is not one of the twelve in `FLOOR` and states no `write-limit` writes only `.md`. The seven roles added in 0.11 are not in `FLOOR`: their limits come from their files alone |
 | `write-dirs` | project folders, comma-separated | Folders at the top of the project this role may write any file into despite its write limit. Honoured only as far as `FLOOR` in the code allows: today only `reverse-engineer`, for `research` and `captures` |
 | `limit-hint` | one line, quoted | Added to the role's denial message ("Describe the technique in your report; ...") |
 | `can-deploy` | `true` | Honoured **only** for a role the plugin's code allows to deploy (today only `devops-engineer`), and only as the exact type `chief-of-staff:<name>`. A new role gets deploy rights only by being added to `FLOOR` in `hooks/register.ts`, a code change on purpose |
@@ -111,7 +137,7 @@ unknown department, `write-limit` or `can-deploy` value, a key given twice (in a
 Only regular files of up to 64 KiB are read (no links, no FIFOs). An agent of this plugin whose file is
 missing writes only `.md` and never deploys.
 
-**The floor.** `FLOOR` in `hooks/register.ts` holds the twelve shipped roles' limits: `web-designer`
+**The floor.** `FLOOR` in `hooks/register.ts` holds the limits of the twelve roles shipped before 0.11: `web-designer`
 `no-scripts`, `reverse-engineer` and `creative-director` `md-only`, and only `devops-engineer` may deploy.
 A file can make its role stricter than that, never looser.
 
@@ -261,7 +287,7 @@ that turns a department on) only when you type it at the prompt or send it throu
 from `claude -p`, a plugin, a schedule or another session. Tightening works from anywhere. A Claude Code
 session started from inside another one (Claude Code sets `CLAUDECODE` or `CLAUDE_CODE_CHILD_SESSION` for
 what it runs) is held to agent limits throughout: its main session keeps the no-edit rule even with `/delegate off`,
-its agents write only `.md` and never deploy unless they are one of the twelve shipped roles (which keep
+its agents write only `.md` and never deploy unless they are one of the twelve roles in `FLOOR` (which keep
 their own limits, never looser), and nothing can be loosened.
 
 **When a guardrail refuses something legitimate**, every agent and the Chief of Staff are told to stop and
@@ -319,6 +345,9 @@ mode plus the environment's network policy. Known ways past them, by design or n
   allow-list errs towards asking, but a misleading name can pass. Paths are read from keys that name paths
   and from strings that look like paths; a path hidden elsewhere in an argument is not seen. MCP tools
   that read are not path-checked.
+- **The 0.11 roles' limits live in their files only.** `brand-designer`, `graphic-designer`, `video-producer` and
+  the four Social roles are not in `FLOOR`, so an edit to their agent file can loosen their write limit or
+  `tools:` list. Their publish and share calls still go through the confirm gate whatever the file says.
 - **The confirm gate trusts Claude Code's approver**: it asks only when the engine says a person will
   answer, and refuses otherwise.
 
